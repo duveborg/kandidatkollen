@@ -4,6 +4,13 @@ Kandidatkollen — statisk sajt som kopplar valsedeln 2026 till hur riksdagens
 ledamöter faktiskt röstade 2022–2026. Metoden och dess brister står i
 [README.md](README.md); den här filen är det som är lätt att göra fel.
 
+## Arbetssätt
+
+Hobbyprojekt med en utvecklare. **Arbeta direkt på `main`** — inga
+featuregrenar, ingen pull request. Committa gärna, men **pusha inte**: det
+sköter jag själv, liksom `./publicera.sh`. Det gäller även när ändringen är
+stor eller rör flera filer.
+
 ## Kommandon
 
 ```sh
