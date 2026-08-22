@@ -1,0 +1,108 @@
+name: Bygg och publicera
+
+# Publicerar sajten på gh-pages vid varje push till main. Samma steg som
+# ./publicera.sh, plus de två Python-stegen -- skillnaden mot att köra lokalt
+# är att rådatan inte finns på löparen utan måste cachas.
+#
+# Rådatan är 279 MB och ändras sällan, så den ligger i actions/cache och
+# hämtas inte om vid en vanlig push. Tre av filerna uppdateras däremot
+# löpande hos riksdagen, och fetch.py hoppar över filer som redan finns --
+# de raderas därför före hämtningen när körningen ska ge färsk data.
+# kandidaturer.csv sköter fetch.py själv: den hämtas alltid om, eftersom
+# Valmyndigheten uppdaterar den varje timme fram till valdagen.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      farsk_data:
+        description: "Hämta om voteringar, personer och sagt och gjort"
+        type: boolean
+        default: false
+  schedule:
+    # Måndag morgon. Håller både datan och cachen färsk: GitHub kastar
+    # cacheposter som inte använts på sju dygn.
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: write
+
+# Två publiceringar samtidigt skulle tvinga upp var sin version på gh-pages.
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  publicera:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Samma tolk som lokalt. Fångar 3.10-syntax som annars slinker
+          # igenom här och felar på utvecklingsmaskinen.
+          python-version: "3.9"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Nyckeln är unik per körning, så cachen skrivs om varje gång och
+      # nyhämtade betänkanden följer med till nästa körning. restore-keys
+      # plockar den senaste befintliga.
+      - name: Återställ rådata
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            data/cache
+          key: valdata-${{ github.run_id }}
+          restore-keys: valdata-
+
+      - name: Töm de filer som uppdateras löpande
+        if: inputs.farsk_data || github.event_name == 'schedule'
+        run: rm -f data/raw/votering-*.csv data/raw/person.csv data/raw/sagtochgjort.csv
+
+      - name: Hämta rådata
+        run: python3 build/fetch.py
+
+      - name: Bygg data
+        run: python3 build/build.py
+
+      - run: npm ci
+
+      - name: Bygg sajten
+        run: npm run bygg
+
+      # Publicera inte en trasig sajt: rökprovet går igenom alla vyer, felar
+      # på konsolfel, HTTP-status >= 400 och horisontell scroll vid 390 px.
+      - name: Rökprov
+        run: |
+          npx playwright install --with-deps chromium
+          npm run rokprov
+
+      - name: Publicera till gh-pages
+        run: |
+          set -e
+          test -f site/index.html
+          test -f site/data/index.json
+          test -f site/data/quiz.json
+          tmp="$RUNNER_TEMP/sajt"
+          mkdir -p "$tmp"
+          cp -R site/. "$tmp/"
+          # Utan .nojekyll kör GitHub Pages sajten genom Jekyll, som tyst
+          # utelämnar filer och kataloger som börjar med understreck.
+          touch "$tmp/.nojekyll"
+          cd "$tmp"
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publicerar sajten $(date -u +%Y-%m-%dT%H:%MZ)"
+          # Grenen bär alltid exakt en commit: den senast publicerade sajten.
+          git push -qf \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
+            gh-pages

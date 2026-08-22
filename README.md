@@ -36,10 +36,19 @@ komplett och kan serveras av vad som helst — den innehåller bara statiska
 filer. Adresserna är relativa, så den fungerar lika bra i roten som under en
 underkatalog.
 
-`./publicera.sh` bygger och lägger upp `site/` på grenen `gh-pages`, som
-GitHub Pages serverar på <https://duveborg.github.io/kandidatkollen/>. Grenen
-bär bara den senaste sajten — den skrivs över vid varje publicering. Kör
-`build/fetch.py` och `build/build.py` först om datan ska vara färsk.
+En push till `main` publicerar sajten automatiskt:
+`.github/workflows/publicera.yml` hämtar rådata ur cachen, bygger, kör
+rökprovet och tvingar upp `site/` på grenen `gh-pages`, som GitHub Pages
+serverar på <https://duveborg.github.io/kandidatkollen/>. Grenen bär bara den
+senaste sajten. Går rökprovet inte igenom publiceras ingenting.
+
+Voteringsdata hämtas inte om vid varje push — den ändras sällan, och rådatan
+är 279 MB. Ett veckoschema och en manuell start (`farsk_data`) tvingar fram
+en ny hämtning. Kandidatlistorna hämtas alltid om, eftersom Valmyndigheten
+uppdaterar dem varje timme fram till valdagen.
+
+`./publicera.sh` gör samma sak lokalt och behövs bara för att publicera utan
+att pusha, eller för att lägga upp data som bara finns på den egna maskinen.
 
 Databearbetningen har inga beroenden utöver Python 3 stdlib. Frontenden är
 React 19, byggd med Vite.

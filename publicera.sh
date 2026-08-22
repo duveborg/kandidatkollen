@@ -1,6 +1,10 @@
 #!/bin/sh
 # Bygger site/ och publicerar den på grenen gh-pages.
 #
+# Behövs normalt inte: .github/workflows/publicera.yml gör samma sak vid varje
+# push till main. Skriptet finns kvar för att publicera utan att pusha, och
+# för att kunna lägga upp sajten med data som bara finns lokalt.
+#
 # site/ är genererad och ignorerad i main, så den kan inte pushas med subtree.
 # I stället kopieras den till en tillfällig katalog som blir en egen commit
 # utan historik och tvingas upp på gh-pages. Grenen bär alltså alltid exakt en

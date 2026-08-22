@@ -75,7 +75,16 @@ const fail = (where, message) => failures.push(`${where}: ${message}`);
       }
     }
   }
-  if (positions !== 10521) fail(where, `${positions} kandidatplatser, väntade 10 521`);
+  /* Talet är en spärr mot att sammanslagningen av namn går sönder igen, inte
+     ett facit: kandidaturfilen uppdateras varje timme fram till valdagen, så
+     ett exakt krav skulle stoppa publiceringen så fort ett parti ändrar en
+     lista. Regressionerna det gäller — flip_namn() och person_nyckel() —
+     flyttar tusentals rader, alltså långt utanför den här marginalen. */
+  const VANTADE_PLATSER = 10521;
+  const marginal = Math.round(VANTADE_PLATSER * 0.03);
+  if (Math.abs(positions - VANTADE_PLATSER) > marginal) {
+    fail(where, `${positions} kandidatplatser, väntade ${VANTADE_PLATSER} ± ${marginal}`);
+  }
   // The nine switchers all went from a party to independent, so a member on
   // another party's list is expected only there. More than a handful means the
   // join is matching on something other than the person again.

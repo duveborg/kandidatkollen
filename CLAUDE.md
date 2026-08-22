@@ -8,8 +8,12 @@ ledamöter faktiskt röstade 2022–2026. Metoden och dess brister står i
 
 Hobbyprojekt med en utvecklare. **Arbeta direkt på `main`** — inga
 featuregrenar, ingen pull request. Committa gärna, men **pusha inte**: det
-sköter jag själv, liksom `./publicera.sh`. Det gäller även när ändringen är
-stor eller rör flera filer.
+sköter jag själv. Det gäller även när ändringen är stor eller rör flera filer.
+
+En push till `main` publicerar sajten: `.github/workflows/publicera.yml` kör
+`fetch.py`, `build.py`, `npm run bygg` och rökprovet, och tvingar upp `site/`
+på `gh-pages`. Felar rökprovet publiceras ingenting. `./publicera.sh` gör
+samma sak lokalt och behövs bara för att publicera utan att pusha.
 
 ## Kommandon
 
@@ -23,6 +27,15 @@ npm run rokprov            # Playwright mot byggd sajt
 ./run.sh                   # fetch + build + dev
 ./publicera.sh             # bygg + push av site/ till grenen gh-pages
 ```
+
+Rådatan är 279 MB och finns inte i repot, så CI cachar `data/raw/` och
+`data/cache/` under nyckeln `valdata-<run_id>` med `restore-keys: valdata-`.
+Första körningen efter en tömd cache hämtar allt på nytt — bulkdumparna plus
+~1 700 anrop för utskottsförslag och betänkanden — och tar tiotals minuter.
+`fetch.py` hoppar över filer som redan finns, så `votering-*.csv`,
+`person.csv` och `sagtochgjort.csv` raderas före hämtningen i de körningar
+som ska ge färsk data: veckoschemat och manuell start med `farsk_data`.
+`kandidaturer.csv` hämtas alltid om av `fetch.py` själv.
 
 Sajten ligger på <https://duveborg.github.io/kandidatkollen/>, alltså under en
 underkatalog. Därför är `base: "./"` i `vite.config.js` och alla `fetch` i
@@ -256,6 +269,7 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | PCA | 362 ledamöter, 43 % + 14 % förklarad varians |
 | aktivitetsposter | 113 190 |
 | valsedlar | 285 i 29 valkretsar, 10 521 kandidatplatser, 95 ogiltiga |
+| kandidatplatser i rökprovet | jämförs mot 10 521 med 3 % marginal — kandidaturfilen ändras varje timme, medan de regressioner talet vaktar mot flyttar tusentals rader |
 | partibytare | 9, samtliga från parti till politiskt obunden |
 | jämförbara par | 2 356 på samma valsedel, median 2 skiljande voteringar, störst 34, 766 par utan en enda; 85 par hoppas över för olika partibeteckning, 140 för under 50 gemensamma voteringar |
 | personvalet 2022 | 67 av 349 personvalda, 166 över spärren, 13 684 kandidater med kryss |
