@@ -13,7 +13,8 @@ krävdes i din valkrets 2022.
 Vet du inte vad du tycker om kandidaterna kan du gå åt tredje hållet: ta
 ställning till femton skarpa voteringar ur mandatperioden, formulerade som de
 partier som förlorade dem skrev dem, och se vilka ledamöter som röstade som du
-— och vilka av dem som står på en valsedel där du bor.
+— och vilka av dem som står på en valsedel där du bor. Frågorna byts vid
+midnatt: bygget gör åtta uppsättningar som inte delar en enda fråga.
 
 Valkompasser mäter vad partier *säger*. Den här sajten mäter vad ledamöter
 *gjorde*, och är därför användbar för det beslut väljaren har svårast att fatta:
@@ -111,7 +112,12 @@ motionerna” följt av en radda motionsnummer. Kravet står i reservationen, i
 betänkandets fulltext, och att hålla med den motsvarar därför ett nej i
 kammaren. Bygget väljer frågorna självt: först de som skiljer partilinjerna
 åt, sedan två som bär den andra dimensionen i det politiska rummet, sedan den
-mest omstridda frågan inom vart och ett av ett dussin ämnesområden.
+mest omstridda frågan inom vart och ett av ett dussin ämnesområden. Hela
+urvalet körs om åtta gånger, där varje omgång utesluter det tidigare omgångar
+tagit, och datumet avgör vilken uppsättning läsaren får. Att dagen och inte
+besöket styr är ett val: två läsare som jämför sina placeringar samma dag har
+svarat på samma frågor, och en delad länk visar det den visade när den
+skapades. Vilken uppsättning svaren gäller står i länken.
 
 Fyra saker begränsar svaret. Reservationer skrivs av dem som förlorade i
 utskottet, och utskottsmajoriteten har hela perioden varit regeringspartierna
@@ -121,7 +127,16 @@ En ledamot som inte röstade räknas varken för eller mot, eftersom frånvaro
 oftast är en kvittning; nämnaren står utskriven vid varje namn, och bara de som
 röstade i minst 65 procent av läsarens frågor rangordnas. Ordningen mellan två
 partikamrater vilar på mycket små skillnader. Och M och L går inte att skilja
-åt över huvud taget: de röstade lika i varenda votering i perioden.
+åt över huvud taget: de röstade lika i varenda votering i perioden — i de
+flesta uppsättningar följer KD med dem, och vilka partier det gäller för just
+dina frågor står under kartan.
+
+Placeringen på kartan räknas ut ur samma principalkomponenter som blockkartan,
+men på femton voteringar i stället för 2 571, och både laddningarna och
+skalfaktorn hör till just de femton. Räknar man om ledamöternas platser på det
+viset hamnar de nära sina riktiga: 0,98 mot 0,92 i den första uppsättningen och
+som lägst 0,96 mot 0,80 i den åttonde. Det är alltid den lodräta axeln som
+tappar först, och en uppsättning som faller under golvet publiceras inte.
 
 **Knappa voteringar redovisas som andel, inte som antal missade.** 157
 voteringar under perioden avgjordes med högst tio rösters marginal, och

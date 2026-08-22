@@ -84,7 +84,8 @@ export function Home() {
         <p>
           {"Ta ställning till femton skarpa voteringar ur mandatperioden — formulerade " +
             "som de partier som förlorade dem skrev dem — och se vilka ledamöter som " +
-            "röstade som du, och vilka av dem som står på en valsedel där du bor."}
+            "röstade som du, och vilka av dem som står på en valsedel där du bor. " +
+            "Frågorna byts vid midnatt."}
         </p>
         <p className="hint">
           <a href="#/dinplats">Var står du? →</a>

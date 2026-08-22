@@ -304,23 +304,49 @@ current = "dinplats";
 {
   const intro = await visit("dinplats", "#/dinplats");
   if (!/Var står du/.test(intro)) fail("dinplats", "saknar rubrik");
-  const quiz = JSON.parse(fs.readFileSync(path.join(SITE, "data", "quiz.json"), "utf8"));
-  if (quiz.fragor.length < 10) fail("dinplats", `bara ${quiz.fragor.length} frågor i quiz.json`);
+  const file = JSON.parse(fs.readFileSync(path.join(SITE, "data", "quiz.json"), "utf8"));
+  const sets = file.varianter;
+  if (!sets?.length) fail("dinplats", "inga uppsättningar i quiz.json");
 
-  // every question must be answerable without the rest of the betänkande, so
-  // no question may be a bare reference back to something unseen
-  for (const q of quiz.fragor) {
-    if (q.fraga.length < 40) fail("dinplats", `för kort fråga: ${q.fraga}`);
-    if (/^(Detta|Det|Dessa|Vad som)\b/.test(q.fraga)) {
-      fail("dinplats", `frågan syftar bakåt: ${q.fraga.slice(0, 60)}`);
+  // every rule below holds per set, not only for the one today happens to
+  // serve, and no question may turn up in two sets — a reader who asks for
+  // fifteen others has to get fifteen others
+  const seen = new Map();
+  for (const [n, set] of sets.entries()) {
+    if (set.fragor.length < 10) fail("dinplats", `uppsättning ${n}: ${set.fragor.length} frågor`);
+    if (set.laddning.length !== set.fragor.length) {
+      fail("dinplats", `uppsättning ${n}: laddningar och frågor är olika många`);
     }
-    // agreeing with a reservation has to mean a Nej in the chamber
-    for (const party of q.forslagsstallare) {
-      if (q.linjer[party] !== "Nej") {
-        fail("dinplats", `${party} röstade inte Nej i sin egen reservation (${q.bet})`);
+    // placement is scaled per set, so neither number may be borrowed from another
+    if (!set.skala[0] || !set.skala[1]) fail("dinplats", `uppsättning ${n}: saknar skalfaktor`);
+    if (set.trohet[0] < 0.95 || set.trohet[1] < 0.8) {
+      fail("dinplats", `uppsättning ${n}: trohet ${set.trohet.join(" / ")} under golvet`);
+    }
+    // the floor against a one-sided test, checked where it is easiest to lose
+    const right = set.fragor.filter((q) =>
+      q.forslagsstallare.every((party) => ["M", "KD", "L", "SD"].includes(party))).length;
+    if (right < 5) fail("dinplats", `uppsättning ${n}: bara ${right} frågor från regeringssidan`);
+
+    // every question must be answerable without the rest of the betänkande, so
+    // no question may be a bare reference back to something unseen
+    for (const q of set.fragor) {
+      if (q.fraga.length < 40) fail("dinplats", `för kort fråga: ${q.fraga}`);
+      if (/^(Detta|Det|Dessa|Vad som)\b/.test(q.fraga)) {
+        fail("dinplats", `frågan syftar bakåt: ${q.fraga.slice(0, 60)}`);
       }
+      // agreeing with a reservation has to mean a Nej in the chamber
+      for (const party of q.forslagsstallare) {
+        if (q.linjer[party] !== "Nej") {
+          fail("dinplats", `${party} röstade inte Nej i sin egen reservation (${q.bet})`);
+        }
+      }
+      if (seen.has(q.id)) {
+        fail("dinplats", `votering ${q.id} finns i både uppsättning ${seen.get(q.id)} och ${n}`);
+      }
+      seen.set(q.id, n);
     }
   }
+  const quiz = sets[0];
 
   // answer them all, alternating so the reader does not land on a party line
   for (let i = 0; i < quiz.fragor.length; i += 1) {
@@ -329,8 +355,10 @@ current = "dinplats";
   }
   await page.waitForSelector("ul.traffar-quiz li", { timeout: 10000 });
   const result = await page.locator("#app").innerText();
-  if (!/\/dinplats\/[MI-]+$/.test(await page.evaluate(() => location.hash))) {
-    fail("dinplats", "svaren hamnade inte i adressen");
+  // the set has to ride along in the address, or a shared link is scored
+  // against whichever set the reader's own day serves up
+  if (!/\/dinplats\/\d+\/[MI-]+$/.test(await page.evaluate(() => location.hash))) {
+    fail("dinplats", "svaren och uppsättningen hamnade inte i adressen");
   }
   // the match list is a ranking, so it needs both a denominator and a median
   const matches = await page.locator("ul.traffar-quiz li").count();
@@ -365,6 +393,30 @@ current = "dinplats";
   // and a broken answer string must fall back to the test rather than crash
   const junk = await visit("dinplats/skräp", "#/dinplats/XYZ");
   if (!/Var står du/.test(junk)) fail("dinplats/skräp", "ogiltiga svar gav inget test");
+
+  // a link from before the rotation carries answers alone and was taken with
+  // the first set; it has to keep resolving to a result
+  current = "dinplats/gammal länk";
+  const svar = "M".repeat(quiz.fragor.length);
+  const legacy = await visit("dinplats/gammal länk", `#/dinplats/${svar}`);
+  if (!/Så röstade riksdagen på dina frågor/.test(legacy)) {
+    fail("dinplats/gammal länk", "den gamla adressformen visar inte resultatet");
+  }
+
+  if (sets.length > 1) {
+    // asking for another set has to give the questions from that set
+    current = "dinplats/annan uppsättning";
+    const other = await visit("dinplats/annan uppsättning", "#/dinplats/1");
+    if (!/Var står du/.test(other)) fail("dinplats/annan uppsättning", "saknar rubrik");
+    const asked = await page.locator(".fraga .forslag").innerText();
+    if (!sets[1].fragor.some((q) => q.fraga.startsWith(asked.slice(0, 40)))) {
+      fail("dinplats/annan uppsättning", `frågan är inte ur uppsättning 1: ${asked.slice(0, 60)}`);
+    }
+    // an unknown set must not quietly score the answers against another one
+    current = "dinplats/okänd uppsättning";
+    const gone = await visit("dinplats/okänd uppsättning", `#/dinplats/${sets.length}/${svar}`);
+    if (!/Var står du/.test(gone)) fail("dinplats/okänd uppsättning", "gav inget test");
+  }
 }
 
 const leaving = await visit("lämnar", "#/lamnar");

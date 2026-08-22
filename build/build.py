@@ -1416,7 +1416,26 @@ QUIZ_FORSLAG_TAK = 4     # ... samma uppsättning reservanter
 # till vänster av frågornas konstruktion snarare än av sina åsikter.
 QUIZ_HOGERSIDAN = frozenset(["M", "KD", "L", "SD"])
 QUIZ_MIN_HOGER = 5
+# Taket för samma reservantuppsättning och golvet för regeringssidan krockar:
+# 52 av poolens 54 högerfrågor är reservationer av SD ensamt, och de två övriga
+# är KD och SD tillsammans. Med taket på fyra rymmer en uppsättning alltså fem
+# högerfrågor bara så länge de två KD-frågorna räcker, vilket de gör till och
+# med andra omgången. Golvet väger tyngre än variationen bland förlorarna, så
+# just det steget får gå till fem. Övriga steg lyder taket.
+QUIZ_FORSLAG_TAK_GOLV = 5
 QUIZ_ANDRA_AXELN = 2     # frågor valda för att bära den lodräta axeln
+# Frågorna byts efter dag, så det behövs flera uppsättningar. De delar ingen
+# fråga med varandra, och det är inte det här talet som avgör hur många det
+# blir: serien tar slut av sig själv vid åtta, när ämnesfälten och utskotten är
+# så uttunnade att ett nionde varv bara hittar tolv frågor. Talet är ett tak
+# mot rundgång om poolen växer, inte ett mål.
+ANTAL_VARIANTER = 12
+# Trohet mot blockkartan, per axel. Uppsättning ett ligger på 0,98 / 0,92, den
+# åttonde på 0,98 / 0,80: senare uppsättningar väljs ur en tunnare pool, och
+# det är alltid den lodräta axeln som tappar först. Under golvet placeras
+# läsaren på måfå, och då är det bättre att uppsättningen inte publiceras.
+# Varje uppsättning bär sin egen siffra, och vyn skriver ut den.
+QUIZ_TROHET_GOLV = (0.95, 0.80)
 
 
 def load_reservationer():
@@ -1496,7 +1515,7 @@ def _dela(grupper, nyckel):
 
 
 def build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas):
-    """Femton voteringar som läsaren kan ta ställning till själv.
+    """Uppsättningar om femton voteringar som läsaren kan ta ställning till.
 
     Frågan är reservationens krav, inte utskottets förslagstext: nio av tio
     utskottsförslag lyder "Riksdagen avslår motionerna" följt av en radda
@@ -1518,6 +1537,16 @@ def build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas):
          av ämnesfälten. Ett fortsatt girigt urval hade i stället letat upp de
          voteringar som råkar dela kammaren udda, och de handlar oftare om
          delegationers sammansättning än om något läsaren känner igen.
+
+    Hela urvalet körs om flera gånger, där varje varv utesluter frågorna som
+    tidigare varv tagit. Uppsättningarna delar alltså ingen fråga, och
+    gränssnittet kan rotera mellan dem. Varje uppsättning bär sina egna
+    laddningar, sin egen skalfaktor och sin egen trohet mot blockkartan --
+    de talen gäller just de femton frågorna och går inte att låna mellan
+    uppsättningar. Ett varv som inte längre klarar golvet för
+    regeringssidan eller troheten publiceras inte: poolen blir tunnare för
+    varje varv, och den femte uppsättningen ska inte vara sämre gjord än den
+    första bara för att den finns.
 
     Allt jämförs i sorterad ordning med votering_id som sista kriterium: utan
     det bröts lika lägen av mängdens iterationsordning, och bygget gav olika
@@ -1598,71 +1627,7 @@ def build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas):
             ]
 
     alla = sorted({d["iid"] for d in votes})
-    pgrupper, mgrupper = [list(RIKSDAGSPARTIER)], [sorted(rumset) or alla]
-    valda = []
-    organ_n = collections.Counter()
-    falt_n = collections.Counter()
-    forslag_n = collections.Counter()
-    kvar = sorted(kandidater)
 
-    def far_valjas(vid):
-        k, a = kandidater[vid], amnen[vid]
-        return (organ_n[a.get("organ", "")] < QUIZ_ORGAN_TAK
-                and falt_n[k["falt"]] < QUIZ_FALT_TAK
-                and forslag_n[k["partier"]] < QUIZ_FORSLAG_TAK)
-
-    def valj(vid):
-        valda.append(vid)
-        kvar.remove(vid)
-        organ_n[amnen[vid].get("organ", "")] += 1
-        falt_n[kandidater[vid]["falt"]] += 1
-        forslag_n[kandidater[vid]["partier"]] += 1
-
-    # Steg 1: säkra att partilinjerna går att skilja åt. Rent girigt, och
-    # klart efter tre eller fyra frågor -- fler ger inget, eftersom M och L
-    # röstade lika i hela perioden och aldrig kan separeras.
-    while len(valda) < ANTAL_FRAGOR:
-        bast = bast_v = None
-        for vid in kvar:
-            if not far_valjas(vid):
-                continue
-            v = (_skilda(pgrupper, lambda p: kandidater[vid]["linjer"].get(p) or "-"),
-                 _skilda(mgrupper, lambda i: per_votering[vid].get(i, "-")),
-                 vid)
-            if v[0] and (bast_v is None or v > bast_v):
-                bast, bast_v = vid, v
-        if bast is None:
-            break
-        pgrupper = _dela(pgrupper, lambda p: kandidater[bast]["linjer"].get(p) or "-")
-        mgrupper = _dela(mgrupper, lambda i: per_votering[bast].get(i, "-"))
-        valj(bast)
-
-    # Steg 1b: förankra andra axeln. Femton frågor valda enbart på
-    # partiseparation och bredd råkar nästan alla ligga längs den första
-    # axeln, och då blir läsarens lodräta placering brus -- troheten föll till
-    # 0,50 innan det här steget fanns. Två frågor väljs därför på hur tungt de
-    # väger i andra komponenten.
-    for _ in range(QUIZ_ANDRA_AXELN):
-        bast = bast_v = None
-        for vid in kvar:
-            if not far_valjas(vid):
-                continue
-            v = (round(abs(laddningar.get(vid, [0.0, 0.0])[1]), 9), vid)
-            if bast_v is None or v > bast_v:
-                bast, bast_v = vid, v
-        if bast is None:
-            break
-        pgrupper = _dela(pgrupper, lambda p: kandidater[bast]["linjer"].get(p) or "-")
-        mgrupper = _dela(mgrupper, lambda i: per_votering[bast].get(i, "-"))
-        valj(bast)
-
-    # Steg 2: bredd i stället för mer separation. Fälten gås igenom i tur och
-    # ordning och varje fält bidrar med sin mest omstridda fråga -- den där
-    # minoritetssidan är störst. Ett fortsatt girigt urval hade i stället
-    # letat upp de voteringar som råkar dela kammaren udda, och de handlar
-    # oftare om delegationers sammansättning än om något läsaren känner igen.
-    # Steget hänger inte på vad som valdes före, så en ändrad ordlista flyttar
-    # inte hela uppsättningen.
     def omstridd(vid):
         u = kandidater[vid]["utfall"]
         n = sum(u.values()) or 1
@@ -1671,118 +1636,228 @@ def build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas):
     def fran_hogersidan(vid):
         return set(kandidater[vid]["partier"]) <= QUIZ_HOGERSIDAN
 
-    falt_ordning = [namn for namn, _ in QUIZ_FALT]
+    def valj_uppsattning(anvanda):
+        """Femton frågor ur det som inte redan är taget."""
+        pgrupper, mgrupper = [list(RIKSDAGSPARTIER)], [sorted(rumset) or alla]
+        valda = []
+        organ_n = collections.Counter()
+        falt_n = collections.Counter()
+        forslag_n = collections.Counter()
+        kvar = [vid for vid in sorted(kandidater) if vid not in anvanda]
 
-    def fyll(mal, bara_hoger):
-        nonlocal pgrupper, mgrupper
-        varv = 0
-        while len(valda) < mal and varv < QUIZ_FALT_TAK:
-            for falt in falt_ordning:
-                if len(valda) >= mal:
-                    break
-                bast = bast_v = None
-                for vid in kvar:
-                    if kandidater[vid]["falt"] != falt or not far_valjas(vid):
-                        continue
-                    if bara_hoger and not fran_hogersidan(vid):
-                        continue
-                    v = (round(omstridd(vid), 6), 1 if vid.upper() in knappa else 0, vid)
-                    if bast_v is None or v > bast_v:
-                        bast, bast_v = vid, v
-                if bast:
-                    pgrupper = _dela(
-                        pgrupper, lambda p: kandidater[bast]["linjer"].get(p) or "-")
-                    mgrupper = _dela(mgrupper, lambda i: per_votering[bast].get(i, "-"))
-                    valj(bast)
-            varv += 1
+        def far_valjas(vid, forslag_tak=QUIZ_FORSLAG_TAK):
+            k, a = kandidater[vid], amnen[vid]
+            return (organ_n[a.get("organ", "")] < QUIZ_ORGAN_TAK
+                    and falt_n[k["falt"]] < QUIZ_FALT_TAK
+                    and forslag_n[k["partier"]] < forslag_tak)
 
-    # Golvet för regeringssidan tas först, medan alla fält ännu är lediga.
-    saknas = max(0, QUIZ_MIN_HOGER - sum(1 for v in valda if fran_hogersidan(v)))
-    fyll(len(valda) + saknas, True)
-    fyll(ANTAL_FRAGOR, False)
+        def valj(vid):
+            valda.append(vid)
+            kvar.remove(vid)
+            organ_n[amnen[vid].get("organ", "")] += 1
+            falt_n[kandidater[vid]["falt"]] += 1
+            forslag_n[kandidater[vid]["partier"]] += 1
 
-    valda.sort(key=lambda v: (amnen[v].get("rm", ""), amnen[v].get("bet", "")))
-    oskiljbara = [sorted(g) for g in pgrupper if len(g) > 1]
+        # Steg 1: säkra att partilinjerna går att skilja åt. Rent girigt, och
+        # klart efter tre eller fyra frågor -- fler ger inget, eftersom M och L
+        # röstade lika i hela perioden och aldrig kan separeras.
+        while len(valda) < ANTAL_FRAGOR:
+            bast = bast_v = None
+            for vid in kvar:
+                if not far_valjas(vid):
+                    continue
+                v = (_skilda(pgrupper, lambda p: kandidater[vid]["linjer"].get(p) or "-"),
+                     _skilda(mgrupper, lambda i: per_votering[vid].get(i, "-")),
+                     vid)
+                if v[0] and (bast_v is None or v > bast_v):
+                    bast, bast_v = vid, v
+            if bast is None:
+                break
+            pgrupper = _dela(pgrupper, lambda p: kandidater[bast]["linjer"].get(p) or "-")
+            mgrupper = _dela(mgrupper, lambda i: per_votering[bast].get(i, "-"))
+            valj(bast)
 
-    fragor = []
-    for vid in valda:
-        k, a = kandidater[vid], amnen[vid]
-        fragor.append({
-            "id": vid, "fraga": k["krav"], "amne": k["amne"], "falt": k["falt"],
-            "doktitel": a.get("doktitel", ""), "organ": a.get("organ", ""),
-            "organnamn": UTSKOTT_NAMN.get(a.get("organ", ""), a.get("organ", "")),
-            "bet": a.get("bet", ""), "rm": a.get("rm", ""), "punkt": a.get("punkt", ""),
-            "datum": datum.get(vid, ""),
-            "forslagsstallare": list(k["partier"]),
-            "linjer": k["linjer"], "utfall": k["utfall"],
-            "knapp": vid.upper() in knappa,
-        })
+        # Steg 1b: förankra andra axeln. Femton frågor valda enbart på
+        # partiseparation och bredd råkar nästan alla ligga längs den första
+        # axeln, och då blir läsarens lodräta placering brus -- troheten föll
+        # till 0,50 innan det här steget fanns. Två frågor väljs därför på hur
+        # tungt de väger i andra komponenten.
+        for _ in range(QUIZ_ANDRA_AXELN):
+            bast = bast_v = None
+            for vid in kvar:
+                if not far_valjas(vid):
+                    continue
+                v = (round(abs(laddningar.get(vid, [0.0, 0.0])[1]), 9), vid)
+                if bast_v is None or v > bast_v:
+                    bast, bast_v = vid, v
+            if bast is None:
+                break
+            pgrupper = _dela(pgrupper, lambda p: kandidater[bast]["linjer"].get(p) or "-")
+            mgrupper = _dela(mgrupper, lambda i: per_votering[bast].get(i, "-"))
+            valj(bast)
 
-    # Läsarens plats i samma rum som blockkartan. Koordinaten för ledamot i
-    # är summan över voteringar av den centrerade rösten gånger voteringens
-    # laddning; laddningen faller ut ur samma egenvektor som kartan bygger
-    # på. Läsaren svarar bara på femton av 2 571 voteringar, så summan blir
-    # kortare och måste skalas -- faktorn passas in med minsta kvadrat mot
-    # ledamöternas riktiga koordinater, och troheten redovisas.
-    laddning = {}
-    if rumbas:
-        n = len(rum_med)
-        idx = {m: i for i, m in enumerate(rum_med)}
-        delkoord = [[0.0, 0.0] for _ in range(n)]
+        falt_ordning = [namn for namn, _ in QUIZ_FALT]
+
+        def fyll(mal, bara_hoger):
+            nonlocal pgrupper, mgrupper
+            tak = QUIZ_FORSLAG_TAK_GOLV if bara_hoger else QUIZ_FORSLAG_TAK
+            varv = 0
+            while len(valda) < mal and varv < QUIZ_FALT_TAK:
+                for falt in falt_ordning:
+                    if len(valda) >= mal:
+                        break
+                    bast = bast_v = None
+                    for vid in kvar:
+                        if kandidater[vid]["falt"] != falt or not far_valjas(vid, tak):
+                            continue
+                        if bara_hoger and not fran_hogersidan(vid):
+                            continue
+                        v = (round(omstridd(vid), 6), 1 if vid.upper() in knappa else 0, vid)
+                        if bast_v is None or v > bast_v:
+                            bast, bast_v = vid, v
+                    if bast:
+                        pgrupper = _dela(
+                            pgrupper, lambda p: kandidater[bast]["linjer"].get(p) or "-")
+                        mgrupper = _dela(mgrupper, lambda i: per_votering[bast].get(i, "-"))
+                        valj(bast)
+                varv += 1
+
+        # Steg 2: bredd i stället för mer separation. Fälten gås igenom i tur
+        # och ordning och varje fält bidrar med sin mest omstridda fråga -- den
+        # där minoritetssidan är störst. Ett fortsatt girigt urval hade i
+        # stället letat upp de voteringar som råkar dela kammaren udda, och de
+        # handlar oftare om delegationers sammansättning än om något läsaren
+        # känner igen. Steget hänger inte på vad som valdes före, så en ändrad
+        # ordlista flyttar inte hela uppsättningen.
+        #
+        # Golvet för regeringssidan tas först, medan alla fält ännu är lediga,
+        # och med ett eget tak för reservantuppsättningen: se
+        # QUIZ_FORSLAG_TAK_GOLV.
+        saknas = max(0, QUIZ_MIN_HOGER - sum(1 for v in valda if fran_hogersidan(v)))
+        fyll(len(valda) + saknas, True)
+        fyll(ANTAL_FRAGOR, False)
+
+        valda.sort(key=lambda v: (amnen[v].get("rm", ""), amnen[v].get("bet", "")))
+        return (valda,
+                [sorted(g) for g in pgrupper if len(g) > 1],
+                sum(_par(len(g)) for g in mgrupper))
+
+    def paketera(valda, oskiljbara, oskilda_par):
+        """En uppsättning med allt gränssnittet behöver för just de frågorna."""
+        fragor = []
         for vid in valda:
-            kol = [0.0] * n
-            for iid, rost in per_votering[vid].items():
-                if iid in idx and rost in VARDE:
-                    kol[idx[iid]] = VARDE[rost]
-            kol = [c - mitten[vid] for c in kol]
-            w = laddningar[vid]
-            laddning[vid] = {"w": [round(x, 6) for x in w],
-                             "mitt": round(mitten[vid], 6)}
-            for i, c in enumerate(kol):
-                delkoord[i][0] += c * w[0]
-                delkoord[i][1] += c * w[1]
+            k, a = kandidater[vid], amnen[vid]
+            fragor.append({
+                "id": vid, "fraga": k["krav"], "amne": k["amne"], "falt": k["falt"],
+                "doktitel": a.get("doktitel", ""), "organ": a.get("organ", ""),
+                "organnamn": UTSKOTT_NAMN.get(a.get("organ", ""), a.get("organ", "")),
+                "bet": a.get("bet", ""), "rm": a.get("rm", ""), "punkt": a.get("punkt", ""),
+                "datum": datum.get(vid, ""),
+                "forslagsstallare": list(k["partier"]),
+                "linjer": k["linjer"], "utfall": k["utfall"],
+                "knapp": vid.upper() in knappa,
+            })
 
-        skala, trohet = [], []
-        for axel in (0, 1):
-            helt = [rumbas["v1" if axel == 0 else "v2"][i]
-                    * math.sqrt(rumbas["lam1" if axel == 0 else "lam2"])
-                    for i in range(n)]
-            del_ = [delkoord[i][axel] for i in range(n)]
-            tal = sum(a * b for a, b in zip(del_, helt))
-            nam = sum(a * a for a in del_)
-            skala.append(tal / nam if nam else 0.0)
-            mh = sum(helt) / n
-            md = sum(del_) / n
-            cov = sum((a - md) * (b - mh) for a, b in zip(del_, helt))
-            sd = math.sqrt(sum((a - md) ** 2 for a in del_)
-                           * sum((b - mh) ** 2 for b in helt))
-            trohet.append(cov / sd if sd else 0.0)
-        print("  quiz: %d frågor, trohet mot blockkartan %.2f / %.2f"
-              % (len(valda), trohet[0], trohet[1]))
-    else:
-        skala, trohet = [0.0, 0.0], [0.0, 0.0]
+        # Läsarens plats i samma rum som blockkartan. Koordinaten för ledamot i
+        # är summan över voteringar av den centrerade rösten gånger voteringens
+        # laddning; laddningen faller ut ur samma egenvektor som kartan bygger
+        # på. Läsaren svarar bara på femton av 2 571 voteringar, så summan blir
+        # kortare och måste skalas -- faktorn passas in med minsta kvadrat mot
+        # ledamöternas riktiga koordinater, och troheten redovisas. Både skalan
+        # och troheten hör till den här uppsättningen och räknas om per varv.
+        laddning = {}
+        if rumbas:
+            n = len(rum_med)
+            idx = {m: i for i, m in enumerate(rum_med)}
+            delkoord = [[0.0, 0.0] for _ in range(n)]
+            for vid in valda:
+                kol = [0.0] * n
+                for iid, rost in per_votering[vid].items():
+                    if iid in idx and rost in VARDE:
+                        kol[idx[iid]] = VARDE[rost]
+                kol = [c - mitten[vid] for c in kol]
+                w = laddningar[vid]
+                laddning[vid] = {"w": [round(x, 6) for x in w],
+                                 "mitt": round(mitten[vid], 6)}
+                for i, c in enumerate(kol):
+                    delkoord[i][0] += c * w[0]
+                    delkoord[i][1] += c * w[1]
 
-    KOD = {"Ja": "J", "Nej": "N", "Avstår": "A"}
-    svar = {}
-    for l in ledamoter:
-        rad = per_ledamot.get(l["id"], {})
-        s = "".join(KOD.get(rad.get(vid), "-") for vid in valda)
-        if s.strip("-"):
-            svar[l["id"]] = s
+            skala, trohet = [], []
+            for axel in (0, 1):
+                helt = [rumbas["v1" if axel == 0 else "v2"][i]
+                        * math.sqrt(rumbas["lam1" if axel == 0 else "lam2"])
+                        for i in range(n)]
+                del_ = [delkoord[i][axel] for i in range(n)]
+                tal = sum(a * b for a, b in zip(del_, helt))
+                nam = sum(a * a for a in del_)
+                skala.append(tal / nam if nam else 0.0)
+                mh = sum(helt) / n
+                md = sum(del_) / n
+                cov = sum((a - md) * (b - mh) for a, b in zip(del_, helt))
+                sd = math.sqrt(sum((a - md) ** 2 for a in del_)
+                               * sum((b - mh) ** 2 for b in helt))
+                trohet.append(cov / sd if sd else 0.0)
+        else:
+            skala, trohet = [0.0, 0.0], [0.0, 0.0]
 
-    kvar_par = sum(_par(len(g)) for g in mgrupper)
-    print("  quiz: %d ledamöter svarar, %d oskilda ledamotspar, oskiljbara partier: %s"
-          % (len(svar), kvar_par, oskiljbara or "inga"))
+        KOD = {"Ja": "J", "Nej": "N", "Avstår": "A"}
+        svar = {}
+        for l in ledamoter:
+            rad = per_ledamot.get(l["id"], {})
+            s = "".join(KOD.get(rad.get(vid), "-") for vid in valda)
+            if s.strip("-"):
+                svar[l["id"]] = s
 
+        return {
+            "fragor": fragor,
+            "laddning": [laddning.get(v, {"w": [0, 0], "mitt": 0}) for v in valda],
+            "skala": [round(s, 6) for s in skala],
+            "trohet": [round(t, 4) for t in trohet],
+            "svar": svar,
+            "oskiljbara": oskiljbara,
+            "oskilda_par": oskilda_par,
+        }
+
+    # Varje varv tar femton nya frågor ur det som är kvar. Poolen tunnas ut,
+    # och det som först tryter är frågorna från regeringssidan: de är 54 av
+    # 280, och varje uppsättning kräver fem. Ett varv som inte klarar golvet
+    # eller troheten avbryter serien i stället för att publiceras.
+    varianter = []
+    anvanda = set()
+    for k in range(ANTAL_VARIANTER):
+        valda, oskiljbara, oskilda_par = valj_uppsattning(anvanda)
+        hoger = sum(1 for v in valda if fran_hogersidan(v))
+        if len(valda) < ANTAL_FRAGOR:
+            print("  uppsättning %d: bara %d frågor kvar i poolen -- serien slutar här"
+                  % (k + 1, len(valda)))
+            break
+        if hoger < QUIZ_MIN_HOGER:
+            print("  uppsättning %d: bara %d frågor från regeringssidan/SD, golvet är %d "
+                  "-- serien slutar här" % (k + 1, hoger, QUIZ_MIN_HOGER))
+            break
+        v = paketera(valda, oskiljbara, oskilda_par)
+        t = v["trohet"]
+        if t[0] < QUIZ_TROHET_GOLV[0] or t[1] < QUIZ_TROHET_GOLV[1]:
+            print("  uppsättning %d: trohet %.2f / %.2f under golvet %.2f / %.2f "
+                  "-- serien slutar här"
+                  % (k + 1, t[0], t[1], QUIZ_TROHET_GOLV[0], QUIZ_TROHET_GOLV[1]))
+            break
+        anvanda.update(valda)
+        varianter.append(v)
+        print("  uppsättning %d: %d frågor, %d från regeringssidan/SD, trohet %.2f / %.2f, "
+              "%d ledamöter svarar, %d oskilda ledamotspar, oskiljbara partier: %s"
+              % (k + 1, len(valda), hoger, t[0], t[1], len(v["svar"]), oskilda_par,
+                 oskiljbara or "inga"))
+
+    if not varianter:
+        return None
+    print("  quiz: %d uppsättningar om %d frågor, %d voteringar i poolen"
+          % (len(varianter), ANTAL_FRAGOR, len(kandidater)))
     return {
-        "fragor": fragor,
-        "laddning": [laddning.get(v, {"w": [0, 0], "mitt": 0}) for v in valda],
-        "skala": [round(s, 6) for s in skala],
-        "trohet": [round(t, 4) for t in trohet],
-        "svar": svar,
-        "oskiljbara": oskiljbara,
-        "oskilda_par": kvar_par,
+        "varianter": varianter,
         "av_voteringar": len(per_votering),
+        "ur_pool": len(kandidater),
     }
 
 def build_index(ledamoter, kandidater):
@@ -2157,11 +2232,19 @@ def main():
     reservationer = load_reservationer()
     quiz = build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas)
     if quiz:
+        # Troheten som redovisas på #/om är den lägsta av uppsättningarna, inte
+        # den första: läsaren vet inte vilken hen fick, och siffran ska hålla
+        # för alla. Samma sak med de oskiljbara partierna -- unionen, så att
+        # inget par utelämnas för att det råkade separeras i uppsättning ett.
+        oskiljbara = sorted(
+            set(tuple(g) for v in quiz["varianter"] for g in v["oskiljbara"]))
         stats["quiz"] = {
-            "antal_fragor": len(quiz["fragor"]),
+            "antal_fragor": len(quiz["varianter"][0]["fragor"]),
+            "antal_uppsattningar": len(quiz["varianter"]),
             "av_voteringar": quiz["av_voteringar"],
-            "trohet": quiz["trohet"],
-            "oskiljbara": quiz["oskiljbara"],
+            "ur_pool": quiz["ur_pool"],
+            "trohet": [min(v["trohet"][a] for v in quiz["varianter"]) for a in (0, 1)],
+            "oskiljbara": [list(g) for g in oskiljbara],
         }
 
     print("bygger voteringsdetaljer:")

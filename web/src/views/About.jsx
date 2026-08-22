@@ -163,7 +163,25 @@ export function About() {
             "att läsa utan resten av betänkandet. Ur den mängden tas först de frågor som " +
             "skiljer partilinjerna åt, sedan den mest omstridda frågan inom vart och ett av " +
             "ett dussin ämnesområden, med tak för hur många frågor samma utskott, samma " +
-            "ämne och samma uppsättning reservanter får bidra med."}
+            "ämne och samma uppsättning reservanter får bidra med. Taket för reservanter " +
+            "viker för golvet nedan: 52 av de 54 dugliga frågorna från regeringssidan är " +
+            "reservationer av SD ensamt, så kravet på fem sådana frågor går inte att " +
+            "förena med ett tak på fyra per uppsättning."}
+        </p>
+        <p>
+          {`Urvalet körs om ${
+            stats.quiz && stats.quiz.antal_uppsattningar
+              ? `${stats.quiz.antal_uppsattningar} gånger`
+              : "flera gånger"
+          }, där varje omgång utesluter de frågor tidigare omgångar tagit. ` +
+            "Uppsättningarna delar alltså ingen fråga, och vilken av dem läsaren får " +
+            "avgörs av datumet: frågorna byts vid midnatt, och den som vill ha femton " +
+            "andra direkt kan be om det på resultatsidan. Att dagen och inte besöket " +
+            "styr är ett val — två läsare som jämför sina placeringar samma dag har " +
+            "svarat på samma frågor, och en delad länk visar det den visade när den " +
+            "skapades. Vilken uppsättning svaren gäller står i länken. Serien tar slut " +
+            "vid åtta: därefter är ämnesområdena så uttunnade att en nionde omgång inte " +
+            "får ihop femton frågor som klarar taken."}
         </p>
         <p>
           {"Fyra saker begränsar svaret. Reservationer skrivs av dem som förlorade i " +
@@ -175,16 +193,24 @@ export function About() {
             "en ståndpunkt; nämnaren står därför utskriven vid varje namn. Ordningen mellan " +
             "två partikamrater vilar på mycket små skillnader — medianparet på samma " +
             "valsedel röstade olika i 2 voteringar av omkring 2 000. Och några partier går " +
-            "inte att skilja åt alls: M och L röstade lika i varenda votering i perioden."}
+            "inte att skilja åt alls: M och L röstade lika i varenda votering i perioden, " +
+            "och i de flesta uppsättningar följer KD med dem. Vilka partier det gäller för " +
+            "just dina frågor står under kartan."}
         </p>
         <p>
           {`Prickens plats på kartan räknas ut ur samma principalkomponenter som ` +
             "blockkartan, men på femton voteringar i stället för alla. Räknar man om " +
-            "ledamöternas platser på det viset hamnar de nära sina riktiga: sambandet är " +
-            `${stats.quiz ? stats.quiz.trohet[0].toFixed(2).replace(".", ",") : "0,99"} på ` +
-            "den vågräta axeln, men bara " +
-            `${stats.quiz ? stats.quiz.trohet[1].toFixed(2).replace(".", ",") : "0,75"} på ` +
-            "den lodräta. Läs den lodräta placeringen med stor försiktighet."}
+            "ledamöternas platser på det viset hamnar de nära sina riktiga. Varje " +
+            "uppsättning har sitt eget samband, eftersom både laddningarna och " +
+            "skalfaktorn hör till just de femton frågorna, och den svagaste av dem " +
+            "ligger på " +
+            `${stats.quiz ? stats.quiz.trohet[0].toFixed(2).replace(".", ",") : "0,96"} på ` +
+            "den vågräta axeln och " +
+            `${stats.quiz ? stats.quiz.trohet[1].toFixed(2).replace(".", ",") : "0,80"} på ` +
+            "den lodräta. Siffran för den uppsättning du faktiskt fick står under kartan. " +
+            "Det är alltid den lodräta axeln som tappar först, och en uppsättning som " +
+            "faller under golvet publiceras inte alls. Läs ändå den lodräta placeringen " +
+            "med stor försiktighet."}
         </p>
 
         <h2>Valsedlarna</h2>

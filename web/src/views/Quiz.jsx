@@ -10,7 +10,14 @@ import { PoliticalSpace } from "../components/charts/PoliticalSpace.jsx";
    them to the chamber. The answer string lives in the hash, so a finished
    result is a link — the site has no backend and needs none for this.
 
-   Two things are load-bearing and easy to get wrong later:
+   build.py writes eight sets of fifteen questions that share no question, and
+   the day decides which one the reader gets. The day rather than the visit:
+   a reader who reloads should not get a different test, two readers who
+   compare their placements on the same day compared the same thing, and a
+   shared link keeps meaning what it meant — the set number rides along in the
+   URL. Anyone who wants another fifteen can ask for them from the result page.
+
+   Three things are load-bearing and easy to get wrong later:
 
    1. Agreeing with a reservation means voting Nej in the chamber. The
       committee proposal is what a Ja backs, and the reservation is always
@@ -21,7 +28,15 @@ import { PoliticalSpace } from "../components/charts/PoliticalSpace.jsx";
       the Riksdag is very often a pairing agreement rather than a stance, and
       counting it as disagreement would push the most-paired-out members —
       the party leaders — to the bottom of every reader's list. The
-      denominator is therefore per member and is always shown. */
+      denominator is therefore per member and is always shown.
+
+   3. Every number that places the reader belongs to one set. The loadings,
+      the scale factor fitted against the members' real coordinates and the
+      fidelity behind the note under the map are all computed for those
+      fifteen votes, so they can never be read from one set and applied to
+      another. Answers scored against the wrong set would look perfectly
+      normal and be wrong, which is why an unknown set number drops the
+      answers and starts the test over rather than guessing. */
 
 const AGREE = "M"; // håller med reservationen -> Nej i kammaren
 const AGAINST = "I"; // håller inte med -> Ja i kammaren
@@ -37,6 +52,15 @@ const WANTED = { [AGREE]: "N", [AGAINST]: "J" };
    answered rather than a fixed count. */
 const MIN_SHARE_COMPARABLE = 0.65;
 const MAX_MATCHES = 12;
+
+/* The set of the day. Local midnight, so it turns over when the reader's day
+   does, and by the day number rather than at random: see the note above. */
+export function setOfTheDay(count) {
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const day = Math.round(midnight.getTime() / 86400000);
+  return ((day % count) + count) % count;
+}
 
 export function parseAnswers(text, count) {
   if (!text) return null;
@@ -170,7 +194,7 @@ function Result({ quiz, space, answers, rows, stats }) {
           {"Du hoppade över alla femton frågorna, så det finns ingenting att jämföra med."}
         </p>
         <p className="hint">
-          <a href="#/dinplats">Börja om →</a>
+          <a href={`#/dinplats/${quiz.set}`}>Börja om →</a>
         </p>
       </>
     );
@@ -292,8 +316,13 @@ function Result({ quiz, space, answers, rows, stats }) {
       </ul>
 
       <p className="hint">
-        {"Länken i adressfältet bär dina svar, så den går att spara eller skicka vidare. "}
-        <a href="#/dinplats">Gör om testet →</a>
+        {`Länken i adressfältet bär både dina svar och vilken av de ${quiz.sets} ` +
+          "uppsättningarna frågor du fick, så den går att spara eller skicka vidare. " +
+          "Frågorna byts vid midnatt."}
+        <br />
+        <a href={`#/dinplats/${(quiz.set + 1) % quiz.sets}`}>Femton andra frågor →</a>
+        {" · "}
+        <a href={`#/dinplats/${quiz.set}`}>Gör om samma test →</a>
         {" · "}
         <a href="#/om">Om siffrorna →</a>
       </p>
@@ -301,7 +330,7 @@ function Result({ quiz, space, answers, rows, stats }) {
   );
 }
 
-export function Quiz({ answers: fromHash }) {
+export function Quiz({ set: fromUrl, answers: fromHash }) {
   const { rows, stats } = useData();
   const { loading, data, error } = useFetch("dinplats", () =>
     Promise.all([loadQuiz(), loadPoliticalSpace()]).then(([quiz, space]) => ({ quiz, space })),
@@ -323,8 +352,27 @@ export function Quiz({ answers: fromHash }) {
     );
   }
 
-  const { quiz, space } = data;
-  const answers = parseAnswers(fromHash, quiz.fragor.length);
+  const { quiz: sets, space } = data;
+  const count = sets.varianter.length;
+  /* A set number out of range can only come from a link written against an
+     older build. Scoring those answers against whatever set now sits at that
+     index would produce a plausible, wrong result, so both go and the reader
+     gets today's test instead. Links from before the rotation carry answers
+     with no set at all; they were taken with the first set. */
+  const known = Number.isInteger(fromUrl) && fromUrl >= 0 && fromUrl < count;
+  const older = fromUrl == null && fromHash != null;
+  const taken = known ? fromUrl : 0;
+  const answers =
+    known || older ? parseAnswers(fromHash, sets.varianter[taken].fragor.length) : null;
+  // a set the reader asked for by number stands whether answers came with it
+  // or not; only an unknown one falls back to the day's
+  const index = known || answers ? taken : setOfTheDay(count);
+  const quiz = {
+    ...sets.varianter[index],
+    av_voteringar: sets.av_voteringar,
+    set: index,
+    sets: count,
+  };
   if (answers) {
     return <Result quiz={quiz} space={space} answers={answers} rows={rows} stats={stats} />;
   }
@@ -334,7 +382,7 @@ export function Quiz({ answers: fromHash }) {
   const answer = (choice) => {
     const next = [...given, choice];
     if (next.length === quiz.fragor.length) {
-      window.location.hash = `#/dinplats/${next.join("")}`;
+      window.location.hash = `#/dinplats/${quiz.set}/${next.join("")}`;
       setGiven([]);
       return;
     }
@@ -354,7 +402,14 @@ export function Quiz({ answers: fromHash }) {
           {`Frågorna är hämtade ur reservationerna till riksdagens betänkanden och ` +
             `handlar om ${quiz.fragor.length} olika sakfrågor, från ` +
             `${quiz.fragor[0].rm} till ${quiz.fragor[quiz.fragor.length - 1].rm}. ` +
-            "Att hålla med en reservation motsvarar ett nej i kammaren."}
+            "Att hålla med en reservation motsvarar ett nej i kammaren. " +
+            (quiz.sets > 1
+              ? `Det här är dagens uppsättning, en av ${quiz.sets} som byts vid midnatt ` +
+                "och inte delar en enda fråga med varandra. "
+              : "")}
+          {quiz.sets > 1 ? (
+            <a href={`#/dinplats/${(quiz.set + 1) % quiz.sets}`}>Femton andra frågor →</a>
+          ) : null}
         </p>
       ) : null}
 

@@ -76,10 +76,15 @@ och versionshanteras inte — inget under `site/` redigeras för hand.
   och får inte ändras. Att *lägga
   till* ett segment går bra: `#/kandidat/<namn>/<pid>` pekar ut vilken av
   flera namnar som avses, och den gamla formen fortsätter fungera.
-  `#/dinplats/<svar>` bär läsarens egna svar som en sträng av `M`, `I` och
-  `-`, ett tecken per fråga i `quiz.json`s ordning — det är det som gör ett
-  färdigt resultat delbart utan server, och strängens längd måste därför
-  matcha antalet frågor eller vyn faller tillbaka på testet.
+  `#/dinplats/<uppsattning>/<svar>` bär läsarens egna svar som en sträng av
+  `M`, `I` och `-`, ett tecken per fråga i uppsättningens ordning — det är det
+  som gör ett färdigt resultat delbart utan server, och strängens längd måste
+  därför matcha antalet frågor eller vyn faller tillbaka på testet.
+  Uppsättningsnumret måste följa med: svar räknade mot fel uppsättning ger ett
+  fullt trovärdigt och helt felaktigt resultat. Ett segment som bara är siffror
+  är en uppsättning utan svar, den gamla formen `#/dinplats/<svar>` är länkar
+  från före rotationen och betyder uppsättning 0, och ett okänt nummer kastar
+  svaren och startar om testet i stället för att gissa.
 - **Engelska identifierare** i `web/` och `test/` — variabler, funktioner,
   komponenter, filnamn och kommentarer. Riksdagstermer som namnger något i
   datan behålls som de är: `votering`, `valkrets`, `riksmöte`, `betänkande`.
@@ -122,7 +127,9 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | 132 mot 129 | 132 ledamöter saknar kandidatur och ligger i sökindexet, men `lamnar_riksdagen` har 129: listan kräver >100 mätbara voteringar. Paulina Brandberg (70), Mats Nordberg (38) och Annie Lööf (58) faller bort. Båda talen är riktiga — förväxla dem inte. |
 | Reservationstexten | Utskottsförslagets egen text duger inte som fråga till en läsare: **nio av tio** lyder "Riksdagen avslår motionerna" följt av motionsnummer. Kravet står i reservationens *Ställningstagande*, som bara finns i betänkandets fulltext. Reservationen kopplas på `(dok_id, punkt, partier)` — alla tre behövs, en punkt har ofta flera reservationer. |
 | Betänkandenas html | Exporterad ur Word, med ord delade mitt itu över `<span>`-gränser: `arbetslöshets<span>&#xad;</span>försäkringen` och `till a</span><span>tt`. Ersätter man varje tagg med mellanslag blir orden isärskrivna ("funktionsnedsätt ningar"). Blocktaggar blir mellanslag, inline-taggar försvinner spårlöst. |
-| Quizurvalets ordning | Girigt urval är en kedja: ändras poolen ändras fråga 1, och därmed alla efterföljande. Två körningar gav olika frågor tills lika lägen bröts på `votering_id` och all iteration gick över sorterade listor. Verifierat med olika `PYTHONHASHSEED`. |
+| Quizurvalets ordning | Girigt urval är en kedja: ändras poolen ändras fråga 1, och därmed alla efterföljande. Två körningar gav olika frågor tills lika lägen bröts på `votering_id` och all iteration gick över sorterade listor. Verifierat med olika `PYTHONHASHSEED`. Kedjan löper numera vidare mellan uppsättningarna: varv k väljer ur det varv 1…k−1 lämnat, så en ändrad ordlista flyttar inte bara dagens frågor utan alla åtta. |
+| Golvet mot reservanttaket | `QUIZ_FORSLAG_TAK` (4 frågor från samma reservantuppsättning) och `QUIZ_MIN_HOGER` (5 frågor från regeringssidan) går inte ihop: **52 av poolens 54 högerfrågor är reservationer av SD ensamt**, de två övriga av KD och SD. Med taket på fyra räckte högersidan till exakt två uppsättningar, och den tredje stannade på fyra frågor — inte för att poolen tagit slut. Golvet väger tyngre, så ifyllnadssteget för högersidan får gå till `QUIZ_FORSLAG_TAK_GOLV`. Övriga steg lyder taket. |
+| Uppsättningarnas tal hör ihop | `laddning`, `skala` och `trohet` räknas för just de femton frågorna. Lånas de mellan uppsättningar hamnar läsaren fel utan att något ser fel ut. Klienten läser dem därför alltid ur den uppsättning svaren gäller, och `stats.quiz.trohet` är **minimum över uppsättningarna**, inte den förstas. |
 | Andra axeln i quizet | Frågor valda enbart på partiseparation och bredd ligger nästan alla längs komponent 1, och läsarens lodräta placering blir brus — troheten var 0,50. Två frågor väljs därför på sin laddning i komponent 2, vilket lyfter den till 0,92. Ta inte bort `QUIZ_ANDRA_AXELN` utan att mäta om. |
 | Utskottsforslag | 894 betänkanden efterfrågas, 854 ger användbart svar. `load_amnen()` hoppar över filer <200 B, och 24 refererade voteringar saknar därför utskottsförslag: 3 bland avvikelseexemplen och de knappa voteringarna, 22 av jämförelsevyns 384, varav en är samma votering. Gränssnittet måste tåla det, och rubriken faller tillbaka på betänkandebeteckningen, som alltid står i voteringsraden. |
 
@@ -176,6 +183,18 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
   reservanterna inte röstade Nej, så mappningen håller för varje fråga.
   Vänder man på den blir varje matchning spegelvänd, och inget i
   gränssnittet skulle avslöja det.
+- **Frågorna byts efter dag, inte efter besök.** Åtta uppsättningar som inte
+  delar en enda fråga, och datumet väljer. Slumpas det per besök får två
+  läsare som jämför sina placeringar samma dag olika test, en omladdning byter
+  frågor mitt i, och en delad länk visar inte längre det den visade när den
+  skapades. Den som vill ha femton andra direkt får det med en länk, och
+  numret följer med i adressen.
+- **En uppsättning under troheten publiceras inte.** Senare uppsättningar
+  väljs ur en tunnare pool, och det är alltid den lodräta axeln som tappar
+  först: 0,92 i den första, 0,80 i den åttonde. `QUIZ_TROHET_GOLV` avbryter
+  serien i stället för att lägga till en uppsättning som placerar läsaren på
+  måfå. Vyn skriver ut siffran för läsarens egna frågor, `#/om` den lägsta av
+  alla.
 - **Quizet får inte bli en ensidig lista.** Reservationer skrivs av dem som
   förlorade i utskottet, och utskottsmajoriteten är regeringspartierna med
   SD: 239 av 295 dugliga frågor kommer från vänster- och mittenoppositionen.
@@ -225,7 +244,9 @@ site/                enbart byggd output
 site/data/           index.json + stats.json laddas direkt; rum.json vid
                      #/block; valsedlar.json vid #/valsedel; jamforelser.json
                      vid #/jamfor; quiz.json + rum.json vid #/dinplats;
-                     voteringar.json vid utfällning
+                     voteringar.json vid utfällning. quiz.json bär alla åtta
+                     uppsättningar (189 kB) och växer linjärt med
+                     ANTAL_VARIANTER
 ```
 
 `index.json` skickas packat (`falt` + positionsrader) och packas upp till
@@ -275,9 +296,10 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | personvalet 2022 | 67 av 349 personvalda, 166 över spärren, 13 684 kandidater med kryss |
 | personval per ledamot | 424 av 426 matchade, varav 59 personvalda (de 8 som fattas är statsråd och talman, som inte finns i voteringsdatan) |
 | knappa voteringar | median 89 % deltagande bland 364 heltidsledamöter |
-| quizet | 15 frågor ur 280 dugliga, 5 från regeringssidan eller SD, 413 ledamöter med svar |
-| quizets trohet | 0,98 på första axeln och 0,92 på den andra, mot ledamöternas riktiga plats i rum.json |
-| oskiljbara partier | M och L, i varenda votering i perioden |
+| quizet | 8 uppsättningar om 15 frågor ur 280 dugliga, utan en enda gemensam fråga, 5 från regeringssidan eller SD i var och en, 411–414 ledamöter med svar |
+| quizets trohet | 0,98 / 0,92 i första uppsättningen, 0,96–0,98 / 0,80–0,92 över alla åtta, mot ledamöternas riktiga plats i rum.json |
+| quizets tak | serien tar slut vid åtta av sig själv: ett nionde varv får ihop 12 frågor, inte 15. `ANTAL_VARIANTER` är ett skydd mot rundgång, inte ett mål |
+| oskiljbara partier | M och L, i varenda votering i perioden. I uppsättning 3–8 följer KD med dem: frågorna som skiljer KD från M och L tar slut först |
 
 Ändras siffran för sökindex eller kandidatur 2026 är `flip_namn()` och
 `person_nyckel()` det första att titta på: den ena slår ihop namn som stod

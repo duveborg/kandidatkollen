@@ -17,7 +17,11 @@ import { Quiz } from "./views/Quiz.jsx";
    added later, as was the optional person id on #/kandidat/<namn>/<pid>.
    Adding routes and segments is safe; changing the existing ones is not.
    #/dinplats/<svar> carries the reader's own answers in the URL, which is
-   what makes a finished result shareable without a server. */
+   what makes a finished result shareable without a server. The question set
+   rotates by the day, so the number of the set it was taken with comes first:
+   #/dinplats/<set>/<svar>. A digit-only segment is a set with no answers yet,
+   and the old one-segment form is set 0 — the links published before the
+   rotation existed. */
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash);
 
@@ -46,7 +50,17 @@ function routeTo(hash) {
   if (parts[0] === "valsedel") {
     return <Ballot constituency={parts[1] ? decodeURIComponent(parts[1]) : null} />;
   }
-  if (parts[0] === "dinplats") return <Quiz answers={parts[1] ?? null} />;
+  if (parts[0] === "dinplats") {
+    /* Answers are M, I and -, so a digit-only segment can only be a set
+       number. Shared links from before the rotation carry answers alone. */
+    const numbered = parts[1] != null && /^\d+$/.test(parts[1]);
+    return (
+      <Quiz
+        set={numbered ? Number(parts[1]) : null}
+        answers={(numbered ? parts[2] : parts[1]) ?? null}
+      />
+    );
+  }
   if (parts[0] === "block") return <BlockMap />;
   if (parts[0] === "lamnar") return <Leaving />;
   if (parts[0] === "om") return <About />;
