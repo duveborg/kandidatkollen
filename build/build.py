@@ -34,6 +34,7 @@ innan man litar på siffrorna:
 import csv
 import collections
 import glob
+import html
 import json
 import math
 import os
@@ -103,8 +104,32 @@ def load_votes():
     return rows
 
 
+def stada_text(s):
+    """Gör utskottets förslagstext läsbar.
+
+    Två saker behöver rättas. Fältet innehåller <BR/>-taggar och
+    radbrytningar mitt i meningar, som i "Riksdagen avslår
+    motionerna\n\n2025/26:622 av Jamal El-Haj (-) och". Och innehållet är
+    dubbelkodat: XML-parsern avkodar &amp;auml; till &auml;, som utan en
+    andra avkodning skulle synas rått i gränssnittet.
+    """
+    if not s:
+        return ""
+    s = html.unescape(html.unescape(s))
+    s = re.sub(r"(?i)<br\s*/?>", " ", s)
+    s = re.sub(r"<[^>]+>", "", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
+
+
 def load_amnen():
-    """(votering_id -> {rubrik, bet, motforslag}) från utskottsforslagen."""
+    """votering_id -> allt vi vet om vad voteringen handlade om.
+
+    Punktrubriken räcker sällan på egen hand: "Övriga frågor" eller
+    "Uppföljning" betyder ingenting utan betänkandet de hör till. Därför
+    plockar vi även upp dokumentnivån -- titel, utskott och dok_id -- samt
+    utskottets faktiska förslagstext, beslutstyp och vem som vann.
+    """
     amnen = {}
     for path in glob.glob(os.path.join(CACHE, "*.xml")):
         if os.path.getsize(path) < 200:
@@ -113,16 +138,33 @@ def load_amnen():
             root = ET.parse(path).getroot()
         except ET.ParseError:
             continue
+
+        dok = root.find("dokument")
+        dok_id = doktitel = organ = dokumentnamn = ""
+        if dok is not None:
+            dok_id = (dok.findtext("dok_id") or "").strip()
+            doktitel = stada_text(dok.findtext("titel"))
+            organ = (dok.findtext("organ") or "").strip()
+            dokumentnamn = (dok.findtext("dokumentnamn") or "").strip()
+
         for u in root.iter("utskottsforslag"):
             vid = (u.findtext("votering_id") or "").strip().lower()
             if not vid:
                 continue
             amnen[vid] = {
-                "rubrik": (u.findtext("rubrik") or "").strip(),
+                "rubrik": stada_text(u.findtext("rubrik")),
                 "bet": (u.findtext("bet") or "").strip(),
                 "rm": (u.findtext("rm") or "").strip(),
+                "punkt": (u.findtext("punkt") or "").strip(),
                 "motforslag": (u.findtext("motforslag_partier") or "").replace('"', "").strip(),
                 "vinnare": (u.findtext("vinnare") or "").strip(),
+                "beslutstyp": (u.findtext("beslutstyp") or "").strip(),
+                "voteringskrav": (u.findtext("voteringskrav") or "").strip(),
+                "forslag": stada_text(u.findtext("forslag")),
+                "dok_id": dok_id,
+                "doktitel": doktitel,
+                "organ": organ,
+                "dokumentnamn": dokumentnamn,
             }
     print("  %d voteringar med känt ämne" % len(amnen))
     return amnen
@@ -426,8 +468,13 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
                     "datum": d["datum"], "rm": d["rm"], "bet": d["bet"],
                     "punkt": d["punkt"],
                     "rubrik": a.get("rubrik") or "",
+                    # betänkandets titel är det som gör en punktrubrik som
+                    # "Övriga frågor" begriplig, så den följer med direkt
+                    "doktitel": a.get("doktitel") or "",
                     "motforslag": a.get("motforslag") or "",
                     "min_rost": d["rost"], "partiets_rost": linje,
+                    # nyckel till voteringar.json, som hämtas vid behov
+                    "vid": d["votering_id"].lower(),
                 })
 
     out = []
@@ -655,6 +702,61 @@ def build_rum(votes, ledamoter, iter_n=60):
     }
 
 
+def build_voteringar(amnen, ledamoter, stats, votes):
+    """Detaljer om varje votering som sajten hänvisar till någonstans.
+
+    Läggs i en egen fil som klienten hämtar först när en läsare fäller ut
+    en votering. Bara refererade voteringar tas med -- att skicka alla
+    2571 vore att lasta ner varje besökare med data för sidor de aldrig
+    öppnar.
+    """
+    vill = set()
+    for l in ledamoter:
+        for a in l["avvikelser"]["exempel"]:
+            if a.get("vid"):
+                vill.add(a["vid"])
+    for v in stats["knappa_voteringar"]:
+        if v.get("vid"):
+            vill.add(v["vid"])
+
+    # rösträkning per votering, så utfallet kan visas i utfällt läge
+    rakning = collections.defaultdict(collections.Counter)
+    for d in votes:
+        vid = d["votering_id"].lower()
+        if vid in vill:
+            rakning[vid][d["rost"]] += 1
+
+    ut = {}
+    for vid in sorted(vill):
+        a = amnen.get(vid)
+        if not a:
+            continue
+        c = rakning.get(vid, {})
+        ut[vid] = {
+            "rubrik": a["rubrik"],
+            "doktitel": a["doktitel"],
+            "dokumentnamn": a["dokumentnamn"],
+            "organ": a["organ"],
+            "organnamn": UTSKOTT_NAMN.get(a["organ"], a["organ"]),
+            "bet": a["bet"],
+            "rm": a["rm"],
+            "punkt": a["punkt"],
+            "forslag": a["forslag"],
+            "beslutstyp": a["beslutstyp"],
+            "voteringskrav": a["voteringskrav"],
+            "vinnare": a["vinnare"],
+            "motforslag": a["motforslag"],
+            "dok_id": a["dok_id"],
+            "rakning": {"ja": c.get("Ja", 0), "nej": c.get("Nej", 0),
+                        "avstar": c.get("Avstår", 0),
+                        "rostade_inte": c.get("Frånvarande", 0)},
+        }
+    saknas = len(vill) - len(ut)
+    print("  %d voteringar med detaljer%s"
+          % (len(ut), (", %d utan känt utskottsförslag" % saknas) if saknas else ""))
+    return ut
+
+
 def build_index(ledamoter, kandidater):
     """Sökindex över alla som är sökbara på sajten.
 
@@ -736,10 +838,13 @@ def build_stats(votes, linjer, amnen, ledamoter):
             a = amnen.get(vid.lower(), {})
             knappa.append({
                 "datum": dt, "rm": rm, "bet": bet, "punkt": punkt,
-                "rubrik": a.get("rubrik", ""), "motforslag": a.get("motforslag", ""),
+                "rubrik": a.get("rubrik", ""),
+                "doktitel": a.get("doktitel", ""),
+                "motforslag": a.get("motforslag", ""),
                 "ja": ja, "nej": nej, "avstar": c["Avstår"],
                 "rostade_inte": c["Frånvarande"],
                 "marginal": abs(ja - nej),
+                "vid": vid.lower(),
             })
     knappa.sort(key=lambda x: (x["marginal"], x["datum"]))
 
@@ -836,6 +941,9 @@ def main():
     print("beräknar politiskt rum:")
     rum = build_rum(votes, ledamoter)
 
+    print("bygger voteringsdetaljer:")
+    voteringar = build_voteringar(amnen, ledamoter, stats, votes)
+
     def dump(name, obj):
         path = os.path.join(OUT, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -850,6 +958,8 @@ def main():
     if rum:
         n = dump("rum.json", rum)
         print("  rum.json    %.0f kB" % (n / 1024))
+    n = dump("voteringar.json", voteringar)
+    print("  voteringar.json  %.0f kB" % (n / 1024))
 
     ldir = os.path.join(OUT, "ledamot")
     os.makedirs(ldir, exist_ok=True)

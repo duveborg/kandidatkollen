@@ -13,7 +13,7 @@ personkryssen.
 
 ```sh
 python3 build/fetch.py     # hämtar rådata (~190 MB, ca 3 min första gången)
-python3 build/build.py     # bygger site/data/*.json (ca 5 sekunder)
+python3 build/build.py     # bygger site/data/*.json (ca 15 sekunder)
 cd site && python3 -m http.server 8765
 ```
 
@@ -39,7 +39,7 @@ aktivitetsposter.
 
 ## Metod, och vad den inte klarar
 
-Tre val i beräkningen är värda att känna till innan man litar på siffrorna.
+Valen nedan är värda att känna till innan man litar på siffrorna.
 Samma text finns på sajtens *Om siffrorna*-sida, för läsaren.
 
 **Nämnaren kommer från rösträkningen.** Varje votering i riksdagens data
@@ -71,6 +71,22 @@ inte en avvikelse. Politiskt obundna ledamöter har ingen partilinje och får
 inget värde — annars jämförs de mot ett medelvärde av varandra, vilket gav
 absurda 15–20 % i en tidig version. Svensk partidisciplin är hård: medianen
 ligger långt under en procent, så ett par procent är anmärkningsvärt högt.
+
+**Punktrubriker är obegripliga på egen hand.** Utskottens egna rubriker på
+beslutspunkter lyder ofta "Övriga frågor", "Uppföljning" eller "Regeringens
+lagförslag". Därför bär varje voteringsrad även betänkandets titel, och går
+att fälla ut för utskottets ordagranna förslagstext, utskott, beslutspunkt,
+hela röstfördelningen, vilket partis motförslag som stod emot och om
+utskottets förslag eller en reservation vann. Reservationer vinner nästan
+aldrig: 565 av 567 refererade voteringar gick utskottets väg.
+
+Detaljerna ligger i `voteringar.json` och hämtas först när en läsare fäller ut
+en rad — filen delas sedan av alla rader på sidan. Länken byggs som
+`riksdagen.se/sv/dokument-och-lagar/dokument/_{dok_id}`, som omdirigerar till
+dokumentets riktiga adress; ett påhittat dok\_id ger 404, så mönstret är
+verifierat och inte en mjuk träff. Förslagstexten är dubbelkodad i källan —
+XML-parsern avkodar `&amp;auml;` till `&auml;`, som utan en andra avkodning
+skulle synas rått i gränssnittet.
 
 **Enighetsmatrisen har en känd skevhet.** De flesta voteringar handlar om ett
 enskilt partis reservation; då röstar det partiet ja till sitt eget förslag
@@ -132,6 +148,7 @@ site/              statisk sajt, inga beroenden
   app.js           router och vyer, vanilla JS
   style.css        ljust/mörkt läge, partifärger
   data/            genererad — index.json, stats.json, rum.json,
+                   voteringar.json (hämtas vid utfällning),
                    ledamot/<id>.json
 ```
 

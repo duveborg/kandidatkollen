@@ -369,6 +369,75 @@ h3 { font-size: .95rem; margin: 20px 0 8px; }
 
 .tom { color: var(--ink-faint); font-size: .92rem; margin: 8px 0 0; }
 
+/* utfällbar votering: summary bär flex-layouten som li annars har */
+
+.rader li.fallbar { display: block; padding: 0; }
+
+.rader details > summary {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 9px 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: .92rem;
+}
+
+.rader details > summary::-webkit-details-marker { display: none; }
+
+.rader details > summary::after {
+  content: "+";
+  flex: none;
+  width: 1.1rem;
+  text-align: center;
+  color: var(--ink-faint);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.rader details[open] > summary::after { content: "–"; }
+.rader details > summary:hover { color: var(--accent); }
+.rader details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.detalj {
+  padding: 4px 0 18px 88px;
+  font-size: .9rem;
+  color: var(--ink-soft);
+}
+
+.detalj .kalla {
+  font-size: .78rem;
+  color: var(--ink-faint);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin: 0 0 8px;
+}
+
+.detalj .forslag {
+  margin: 0 0 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+  color: var(--ink);
+}
+
+.detalj dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 0 0 10px;
+  font-size: .84rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.detalj dt { color: var(--ink-faint); }
+.detalj dd { margin: 0; }
+.detalj .lankar { font-size: .84rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+.detalj .lankar a { margin-right: 16px; }
+.detalj .avvek { color: var(--warn); font-weight: 600; }
+
+@media (max-width: 560px) {
+  .detalj { padding-left: 0; }
+  .rader details > summary { flex-wrap: wrap; gap: 4px 12px; }
+}
+
 table.data {
   width: 100%;
   border-collapse: collapse;

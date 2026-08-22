@@ -11,7 +11,8 @@ var app = document.getElementById("app");
 var state = {
   index: null,   // {falt, rader}
   stats: null,
-  rum: null,     // laddas först när blockkartan öppnas
+  rum: null,        // laddas först när blockkartan öppnas
+  voteringar: null, // laddas först när en votering fälls ut
   radkarta: null // normaliserat namn -> rad
 };
 
@@ -283,6 +284,137 @@ function medianJmf(varde, median, enhet) {
     " — " + ord + " snittet";
 }
 
+// ------------------------------------------------------------- votering
+
+/* voteringar.json är stor och behövs bara när någon fäller ut en rad, så
+   den hämtas första gången det händer. Alla väntande rader delar samma
+   promise. */
+var voteringarPromise = null;
+
+function laddaVoteringar() {
+  if (!voteringarPromise) {
+    voteringarPromise = hamta("data/voteringar.json").then(function (v) {
+      state.voteringar = v;
+      return v;
+    }).catch(function (e) {
+      voteringarPromise = null;   // låt nästa försök gå igenom
+      throw e;
+    });
+  }
+  return voteringarPromise;
+}
+
+function riksdagenLank(dokId) {
+  // _{dok_id} omdirigerar till dokumentets riktiga adress med slug
+  return "https://www.riksdagen.se/sv/dokument-och-lagar/dokument/_" + dokId;
+}
+
+/* En utfällbar rad för en votering. `topp` är det som alltid syns
+   (datum, rubrik, utfall); detaljerna hämtas vid första utfällningen. */
+function voteringsRad(spec) {
+  var kropp = h("div", { class: "detalj" }, [
+    h("p", { class: "kalla", text: "Hämtar detaljer …" })
+  ]);
+
+  var summary = h("summary", {}, [
+    h("span", { class: "datum", text: kortdatum(spec.datum) }),
+    h("span", { class: "amne" }, [
+      document.createTextNode(spec.rubrik || (spec.bet + " punkt " + spec.punkt)),
+      spec.underrad
+        ? h("div", { class: "traff-meta", text: spec.underrad })
+        : null
+    ]),
+    h("span", { class: "utfall", text: spec.utfall })
+  ]);
+
+  var det = h("details", {}, [summary, kropp]);
+  var laddad = false;
+
+  det.addEventListener("toggle", function () {
+    if (!det.open || laddad) return;
+    laddad = true;
+    laddaVoteringar().then(function (alla) {
+      var v = spec.vid ? alla[spec.vid] : null;
+      kropp.innerHTML = "";
+      if (!v) {
+        kropp.appendChild(h("p", {
+          class: "kalla",
+          text: "Riksdagens öppna data saknar utskottsförslag för den här " +
+                "voteringen, så vi kan bara visa " +
+                (spec.bet ? spec.bet + " punkt " + spec.punkt : "rubriken") + "."
+        }));
+        return;
+      }
+      voteringsDetalj(kropp, v, spec);
+    }).catch(function (e) {
+      kropp.innerHTML = "";
+      kropp.appendChild(h("p", { class: "kalla",
+                                 text: "Kunde inte hämta detaljer: " + e.message }));
+      laddad = false;
+    });
+  });
+
+  return h("li", { class: "fallbar" }, [det]);
+}
+
+function voteringsDetalj(kropp, v, spec) {
+  kropp.appendChild(h("p", {
+    class: "kalla",
+    text: [v.dokumentnamn + " " + v.rm + ":" + v.bet,
+           v.organnamn, "beslutspunkt " + v.punkt].filter(Boolean).join(" · ")
+  }));
+  // ärendetiteln står oftast redan i den infällda raden; upprepa den inte
+  if (v.doktitel && (!spec.underrad || spec.underrad.indexOf(v.doktitel) === -1)) {
+    kropp.appendChild(h("p", { class: "kalla", text: "Ärende: " + v.doktitel }));
+  }
+  if (v.forslag) {
+    kropp.appendChild(h("p", { class: "forslag", text: v.forslag }));
+  }
+
+  var dl = h("dl");
+  function rad(namn, varde, klass) {
+    if (varde == null || varde === "") return;
+    dl.appendChild(h("dt", { text: namn }));
+    dl.appendChild(h("dd", klass ? { class: klass, text: varde } : { text: varde }));
+  }
+
+  var r = v.rakning || {};
+  rad("Utfall", "Ja " + num(r.ja) + " · Nej " + num(r.nej) +
+                " · Avstod " + num(r.avstar) + " · röstade inte " +
+                num(r.rostade_inte));
+  if (spec.minRost) {
+    rad("Ledamotens röst", spec.minRost +
+        (spec.partietsRost ? " (partiet: " + spec.partietsRost.toLowerCase() + ")" : ""),
+        "avvek");
+  }
+  if (v.motforslag) rad("Motförslag från", v.motforslag);
+  // reservationer vinner nästan aldrig, så det är värt att skriva ut
+  rad("Resultat", v.vinnare === "utskottet"
+        ? "Utskottets förslag vann"
+        : "Reservationen vann (" + v.vinnare + ")");
+  if (v.voteringskrav && v.voteringskrav !== "Enkel majoritet") {
+    rad("Beslutsregel", v.voteringskrav);
+  }
+  kropp.appendChild(dl);
+
+  var lankar = h("p", { class: "lankar" });
+  if (v.dok_id) {
+    // beteckningen i stället för dokumentnamnet, som annars kräver
+    // bestämd form ("betänkandet", "skrivelsen") och lätt blir fel
+    lankar.appendChild(h("a", {
+      href: riksdagenLank(v.dok_id), target: "_blank", rel: "noopener",
+      text: "Öppna " + v.rm + ":" + v.bet + " på riksdagen.se →"
+    }));
+  }
+  if (spec.vid) {
+    lankar.appendChild(h("a", {
+      href: "https://data.riksdagen.se/votering/" + spec.vid, target: "_blank",
+      rel: "noopener", text: "Rådata för voteringen →"
+    }));
+  }
+  kropp.appendChild(lankar);
+}
+
 // ------------------------------------------------------------- vy: ledamot
 
 function visaLedamot(id) {
@@ -403,16 +535,19 @@ function visaLedamot(id) {
       ]));
       if (l.avvikelser.exempel.length) {
         app.appendChild(h("h3", { text: "Senaste tillfällena" }));
+        app.appendChild(h("p", {
+          class: "hint",
+          text: "Fäll ut en rad för att se vad riksdagen faktiskt röstade om."
+        }));
         var ul = h("ul", { class: "rader" });
         l.avvikelser.exempel.forEach(function (a) {
-          ul.appendChild(h("li", {}, [
-            h("span", { class: "datum", text: kortdatum(a.datum) }),
-            h("span", { class: "amne", text: a.rubrik }),
-            h("span", {
-              class: "utfall",
-              text: a.min_rost + " · partiet " + a.partiets_rost.toLowerCase()
-            })
-          ]));
+          ul.appendChild(voteringsRad({
+            vid: a.vid, datum: a.datum, rubrik: a.rubrik,
+            bet: a.bet, punkt: a.punkt,
+            underrad: a.doktitel,
+            utfall: a.min_rost + " · partiet " + a.partiets_rost.toLowerCase(),
+            minRost: a.min_rost, partietsRost: a.partiets_rost
+          }));
         });
         app.appendChild(ul);
       } else {
@@ -1011,19 +1146,14 @@ function visaBlock() {
     }));
     var ul = h("ul", { class: "rader" });
     s.knappa_voteringar.slice(0, 20).forEach(function (v) {
-      ul.appendChild(h("li", {}, [
-        h("span", { class: "datum", text: kortdatum(v.datum) }),
-        h("span", { class: "amne" }, [
-          document.createTextNode(v.rubrik || v.bet + " punkt " + v.punkt),
-          v.motforslag
-            ? h("div", { class: "traff-meta", text: "motförslag från " + v.motforslag })
-            : null
-        ]),
-        h("span", {
-          class: "utfall",
-          text: v.ja + "–" + v.nej + (v.avstar ? " (" + v.avstar + " avstod)" : "")
-        })
-      ]));
+      var under = [v.doktitel,
+                   v.motforslag ? "motförslag från " + v.motforslag : null]
+                  .filter(Boolean).join(" · ");
+      ul.appendChild(voteringsRad({
+        vid: v.vid, datum: v.datum, rubrik: v.rubrik,
+        bet: v.bet, punkt: v.punkt, underrad: under,
+        utfall: v.ja + "–" + v.nej + (v.avstar ? " (" + v.avstar + " avstod)" : "")
+      }));
     });
     app.appendChild(ul);
 
@@ -1115,6 +1245,23 @@ function visaOm() {
             "vilken ståndpunkt hen tagit eller hur mycket hen påverkat. " +
             "Frågor och interpellationer saknar utskottskoppling i datan och " +
             "ingår inte i sakområdena."
+    }),
+
+    h("h2", { text: "Vad en votering handlade om" }),
+    h("p", {
+      text: "Varje votering går att fälla ut. Rubriken på en beslutspunkt är " +
+            "utskottets egen, och den är ofta obegriplig på egen hand — " +
+            "”Övriga frågor” eller ”Uppföljning” säger ingenting utan " +
+            "ärendet de hör till. Därför visar utfällningen betänkandet, " +
+            "utskottet, utskottets ordagranna förslagstext, hela " +
+            "röstfördelningen och vilket partis motförslag som stod emot."
+    }),
+    h("p", {
+      text: "Förslagstexten är hämtad rakt ur riksdagens utskottsförslag och " +
+            "är inte omskriven. Den är skriven för ledamöter, inte för " +
+            "väljare, och hänvisar till motioner med nummer i stället för " +
+            "innehåll. Länken går till betänkandet på riksdagen.se, där " +
+            "resonemanget och reservationerna finns i sin helhet."
     }),
 
     h("h2", { text: "Enighetsmatrisen" }),
