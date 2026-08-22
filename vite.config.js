@@ -24,6 +24,11 @@ function electionData() {
 
 export default defineConfig({
   root: "web",
+  // Relative asset URLs: GitHub Pages serves the site from
+  // /kandidatkollen/, and the hash router never changes the path, so
+  // "./assets/..." and the relative fetches in lib/data.js both resolve
+  // under any base.
+  base: "./",
   plugins: [react(), electionData()],
   build: {
     outDir: "../site",

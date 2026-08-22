@@ -14,7 +14,13 @@ npm run dev                # utvecklingsserver med HMR
 npm run bygg               # web/ -> site/ (Vite, ~0,4 s)
 npm run rokprov            # Playwright mot byggd sajt
 ./run.sh                   # fetch + build + dev
+./publicera.sh             # bygg + push av site/ till grenen gh-pages
 ```
+
+Sajten ligger på <https://duveborg.github.io/kandidatkollen/>, alltså under en
+underkatalog. Därför är `base: "./"` i `vite.config.js` och alla `fetch` i
+`lib/data.js` relativa (`data/index.json`, inte `/data/index.json`). Det håller
+bara så länge routern är hashbaserad: adressraden ändrar aldrig sökvägen.
 
 Utvecklingsservern serverar `site/data/` på `/data` via en plugin i
 `vite.config.js`; datan bundlas aldrig. `npm run bygg` skriver till `site/`

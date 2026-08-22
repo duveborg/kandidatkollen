@@ -28,7 +28,13 @@ Eller `./run.sh`, som kör alla fyra stegen. Öppna adressen som Vite skriver ut
 För en publicerbar sajt: `npm run bygg` skriver `site/index.html` och
 `site/assets/` intill den genererade `site/data/`. Katalogen `site/` är då
 komplett och kan serveras av vad som helst — den innehåller bara statiska
-filer.
+filer. Adresserna är relativa, så den fungerar lika bra i roten som under en
+underkatalog.
+
+`./publicera.sh` bygger och lägger upp `site/` på grenen `gh-pages`, som
+GitHub Pages serverar på <https://duveborg.github.io/kandidatkollen/>. Grenen
+bär bara den senaste sajten — den skrivs över vid varje publicering. Kör
+`build/fetch.py` och `build/build.py` först om datan ska vara färsk.
 
 Databearbetningen har inga beroenden utöver Python 3 stdlib. Frontenden är
 React 19, byggd med Vite.
