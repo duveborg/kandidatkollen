@@ -14,10 +14,19 @@ personkryssen.
 ```sh
 python3 build/fetch.py     # hämtar rådata (~190 MB, ca 3 min första gången)
 python3 build/build.py     # bygger site/data/*.json (ca 15 sekunder)
-cd site && python3 -m http.server 8765
+npm install                # frontendberoenden, en gång
+npm run dev                # utvecklingsserver
 ```
 
-Öppna <http://localhost:8765>. Inga beroenden utöver Python 3 och en webbläsare.
+Eller `./run.sh`, som kör alla fyra stegen. Öppna adressen som Vite skriver ut.
+
+För en publicerbar sajt: `npm run bygg` skriver `site/index.html` och
+`site/assets/` intill den genererade `site/data/`. Katalogen `site/` är då
+komplett och kan serveras av vad som helst — den innehåller bara statiska
+filer.
+
+Databearbetningen har inga beroenden utöver Python 3 stdlib. Frontenden är
+React 19, byggd med Vite.
 
 `fetch.py` hoppar över redan hämtade filer, utom kandidatlistorna — de
 uppdateras varje timme hos Valmyndigheten fram till valet och hämtas därför
@@ -143,21 +152,29 @@ huvuddelen av en ledamots påverkan.
 ```
 build/fetch.py     hämtar rådata till data/raw/ + cachar utskottsforslag
 build/build.py     transformerar till site/data/
-site/              statisk sajt, inga beroenden
+web/               frontendkälla, React 19 + Vite
   index.html
-  app.js           router och vyer, vanilla JS
-  style.css        ljust/mörkt läge, partifärger
-  data/            genererad — index.json, stats.json, rum.json,
+  src/App.jsx      hash-router, header och footer
+  src/lib/         formatering, datahämtning, sökning
+  src/components/  delade komponenter, inklusive charts/
+  src/views/       en fil per vy
+  src/style.css    ljust/mörkt läge, partifärger
+test/smoke.mjs     Playwright-rökprov över alla vyer
+site/              byggd output, enbart statiska filer
+  index.html       skrivs av Vite
+  assets/          skrivs av Vite
+  data/            skrivs av build.py — index.json, stats.json, rum.json,
                    voteringar.json (hämtas vid utfällning),
                    ledamot/<id>.json
 ```
 
-Sajten har fyra vyer: sökningen med ledamotsprofiler, **Blockkartan** (det
+Sajten har fyra huvudvyer: sökningen med ledamotsprofiler, **Blockkartan** (det
 politiska rummet, enighetsmatrisen, blockens rörelse per riksmöte och de
 knappaste voteringarna), **Lämnar riksdagen** och **Om siffrorna**.
 `rum.json` laddas först när Blockkartan öppnas.
 
-`data/` och `site/data/*.json` är genererade och versionshanteras inte.
+`data/` och hela `site/` är genererade och versionshanteras inte. Inget under
+`site/` redigeras för hand.
 
 ## Licens och attribution
 

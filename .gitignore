@@ -1,5 +1,14 @@
+node_modules/
+
 data/raw/
 data/cache/
-site/data/*.json
+
+# site/ innehåller uteslutande byggd output: Vite skriver index.html och
+# assets/, build.py skriver data/. Mönstret site/data/*.json matchade inte
+# site/data/ledamot/, så de 426 filerna låg tidigare spårade av misstag.
+site/index.html
+site/assets/
+site/data/
+
 __pycache__/
 .DS_Store
