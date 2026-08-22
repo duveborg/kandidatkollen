@@ -142,16 +142,23 @@ function sokTraffar(q, max) {
 
 function traffRad(r) {
   var namn = r[0], parti = r[1], ordning = r[2], vk = r[3];
-  var ledamotId = r[5], narvaro = r[6];
+  var kandidaturer = r[4], ledamotId = r[5], narvaro = r[6];
 
   var metabitar = [];
   if (parti) metabitar.push(PARTINAMN[parti] || parti);
   if (ordning) metabitar.push("plats " + ordning);
   if (vk) metabitar.push(kortValkrets(vk));
 
-  var hoger = ledamotId
-    ? h("span", { class: "pill har", text: "satt i riksdagen" })
-    : h("span", { class: "pill utan", text: "ny kandidat" });
+  // Tre fall: sittande som kandiderar igen, sittande som lämnar, och ny
+  // kandidat utan riksdagshistorik.
+  var hoger;
+  if (ledamotId && kandidaturer) {
+    hoger = h("span", { class: "pill har", text: "satt i riksdagen" });
+  } else if (ledamotId) {
+    hoger = h("span", { class: "pill", text: "lämnar riksdagen" });
+  } else {
+    hoger = h("span", { class: "pill utan", text: "ny kandidat" });
+  }
 
   return h("li", { class: partiKlass(parti) }, [
     h("a", { href: ledamotId ? "#/ledamot/" + ledamotId : "#/kandidat/" + encodeURIComponent(namn) }, [
@@ -192,7 +199,7 @@ function visaStart() {
     lista.innerHTML = "";
     if (norm(q).length < 2) {
       status.textContent = state.index.rader.length.toLocaleString("sv-SE") +
-        " kandidater i riksdagsvalet. Skriv minst två bokstäver.";
+        " kandidater och ledamöter. Skriv minst två bokstäver.";
       return;
     }
     var traffar = sokTraffar(q, 40);
@@ -244,11 +251,30 @@ function visaStart() {
   input.focus();
 }
 
-function siffra(tal, etikett) {
+function siffra(tal, etikett, jmf) {
   return h("div", { class: "siffra" }, [
     h("span", { class: "tal", text: tal }),
-    h("span", { class: "etikett", text: etikett })
+    h("span", { class: "etikett", text: etikett }),
+    jmf ? h("span", { class: "jmf", text: jmf }) : null
   ]);
+}
+
+/* "5 h 12 min" — talartid läses inte som 312 minuter.
+   Medianen kan vara halvtalig när antalet ledamöter är jämnt, så avrunda. */
+function timmar(min) {
+  if (min == null) return "–";
+  min = Math.round(min);
+  if (min < 60) return min + " min";
+  return Math.floor(min / 60) + " h " + (min % 60) + " min";
+}
+
+function medianJmf(varde, median, enhet) {
+  if (median == null || varde == null) return null;
+  if (median === 0) return "median 0";
+  var kvot = varde / median;
+  var ord = kvot >= 1.15 ? "över" : (kvot <= 0.85 ? "under" : "kring");
+  return "median " + (enhet === "tid" ? timmar(median) : num(median)) +
+    " — " + ord + " snittet";
 }
 
 function enighetsTabell(s) {
@@ -416,6 +442,9 @@ function visaLedamot(id) {
       }
     }
 
+    // sagt och gjort
+    if (l.aktivitet) app.appendChild(aktivitetsAvsnitt(l, s));
+
     // uppdrag
     if (l.utskott && l.utskott.length) {
       app.appendChild(h("h2", { text: "Uppdrag i riksdagen" }));
@@ -444,6 +473,73 @@ function visaLedamot(id) {
     app.appendChild(h("p", { class: "tom", text: String(e.message || e) }));
     app.appendChild(h("a", { class: "tillbaka", href: "#/", text: "← Tillbaka" }));
   });
+}
+
+/* "Sagt och gjort": talarstol, motioner, frågor — plus vilka sakområden
+   ledamoten faktiskt ägnat sig åt, räknat på utskottet varje anförande och
+   motion hör till. */
+function aktivitetsAvsnitt(l, s) {
+  var a = l.aktivitet;
+  var m = s.aktivitet_median || {};
+  var frag = h("div", {});
+
+  frag.appendChild(h("h2", { text: "Sagt och gjort" }));
+  frag.appendChild(h("div", { class: "kort" }, [
+    h("div", { class: "siffror" }, [
+      siffra(num(a.anforanden), "anföranden i kammaren",
+             medianJmf(a.anforanden, m.anforanden)),
+      siffra(timmar(a.talartid_min), "i talarstolen",
+             medianJmf(a.talartid_min, m.talartid_min, "tid")),
+      siffra(num(a.motioner), "motioner hen står bakom",
+             medianJmf(a.motioner, m.motioner)),
+      siffra(num(a.fragor), "skriftliga frågor",
+             medianJmf(a.fragor, m.fragor)),
+      siffra(num(a.interpellationer), "interpellationer",
+             medianJmf(a.interpellationer, m.interpellationer))
+    ])
+  ]));
+
+  frag.appendChild(h("p", {
+    class: "hint",
+    text: "En motion kan ha upp till 26 undertecknare och datan anger inte " +
+          "vem som är huvudförfattare, så talet visar motioner hen står " +
+          "bakom — inte nödvändigtvis har skrivit."
+  }));
+
+  if (a.amnen && a.amnen.length) {
+    frag.appendChild(h("h3", { text: "Sakområden" }));
+    frag.appendChild(h("p", {
+      class: "hint",
+      text: "Vilket utskott ledamotens anföranden och motioner hör till. " +
+            "Det säger vad hen ägnat sin tid åt, inte vilken ståndpunkt hen tagit."
+    }));
+    var max = a.amnen[0].antal || 1;
+    var ul = h("ul", { class: "amnen " + partiKlass(l.parti) });
+    a.amnen.forEach(function (x) {
+      ul.appendChild(h("li", {}, [
+        h("span", { class: "amne-namn", title: x.namn, text: x.namn }),
+        h("span", { class: "spar" }, [
+          h("span", { style: "width:" + Math.round(x.antal / max * 100) + "%" })
+        ]),
+        h("span", { class: "amne-tal", text: num(x.antal) })
+      ]));
+    });
+    frag.appendChild(ul);
+  }
+
+  if (a.rubriker && a.rubriker.length) {
+    frag.appendChild(h("h3", { text: "Debatter hen återkommit till" }));
+    var ru = h("ul", { class: "rader" });
+    a.rubriker.forEach(function (x) {
+      ru.appendChild(h("li", {}, [
+        h("span", { class: "amne", text: x.rubrik }),
+        h("span", { class: "utfall", text: x.antal + " anföranden" })
+      ]));
+    });
+    frag.appendChild(ru);
+  }
+
+  return frag;
 }
 
 function kandidaturKort(l, k) {
@@ -632,6 +728,29 @@ function visaOm() {
             "därför anmärkningsvärt högt, inte lågt."
     }),
 
+    h("h2", { text: "Sagt och gjort" }),
+    h("p", {
+      text: "Anföranden, motioner, skriftliga frågor och interpellationer " +
+            "kommer från riksdagens sagt-och-gjort-data. Skriftliga frågor " +
+            "och interpellationer finns där i två roller: den ledamot som " +
+            "frågar och det statsråd som svarar. Bara frågeställaren räknas, " +
+            "annars skulle frågorna tillskrivas ministern."
+    }),
+    h("p", {
+      text: "En motion kan ha upp till 26 undertecknare, och datan anger inte " +
+            "vem som är huvudförfattare. Talet visar därför motioner ledamoten " +
+            "står bakom, inte nödvändigtvis har skrivit. Ett högt tal kan " +
+            "betyda mycket eget arbete eller flitigt medundertecknande — datan " +
+            "skiljer dem inte."
+    }),
+    h("p", {
+      text: "Sakområdena räknas på vilket utskott varje anförande och motion " +
+            "hör till. Det är ett mått på var ledamoten lagt sin tid, inte på " +
+            "vilken ståndpunkt hen tagit eller hur mycket hen påverkat. " +
+            "Frågor och interpellationer saknar utskottskoppling i datan och " +
+            "ingår inte i sakområdena."
+    }),
+
     h("h2", { text: "Enighetsmatrisen" }),
     h("p", {
       text: "Talen visar andelen voteringar där två partier landade på samma " +
@@ -664,7 +783,7 @@ function visaOm() {
     h("h2", { text: "Källor" }),
     h("ul", {}, [
       h("li", {}, [h("a", { href: "https://data.riksdagen.se/", rel: "noopener", text: "data.riksdagen.se" }),
-                   document.createTextNode(" — voteringar, ledamöter, uppdrag och utskottsförslag.")]),
+                   document.createTextNode(" — voteringar, ledamöter, uppdrag, utskottsförslag samt sagt och gjort.")]),
       h("li", {}, [h("a", { href: "https://www.val.se/valresultat-och-statistik/statistik-och-data/radata-val-2026", rel: "noopener", text: "val.se, rådata val 2026" }),
                    document.createTextNode(" — kandidatlistor, uppdaterade varje timme.")])
     ])
@@ -692,7 +811,8 @@ laddaBas().then(function () {
     f.textContent = "Underlag: riksdagens voteringar " +
       state.stats.riksmoten.join(", ") + ". " +
       state.stats.antal_ledamoter + " ledamöter, " +
-      state.index.rader.length.toLocaleString("sv-SE") + " kandidater.";
+      state.index.rader.length.toLocaleString("sv-SE") +
+      " sökbara kandidater och ledamöter.";
   }
   window.addEventListener("hashchange", router);
   router();

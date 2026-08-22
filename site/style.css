@@ -283,6 +283,57 @@ h3 { font-size: .95rem; margin: 20px 0 8px; }
 
 .not strong { color: var(--ink); }
 
+/* ämnesprofil — liggande staplar per utskott */
+
+.amnen { list-style: none; padding: 0; margin: 10px 0 0; }
+
+.amnen li {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) 3fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: .88rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.amnen .amne-namn {
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amnen .spar {
+  height: 8px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.amnen .spar span {
+  display: block;
+  height: 100%;
+  background: var(--parti, var(--accent));
+  border-radius: 99px;
+}
+
+.amnen .amne-tal {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  font-size: .82rem;
+}
+
+/* jämförelsetal under en siffra */
+
+.siffra .jmf {
+  display: block;
+  font-size: .72rem;
+  color: var(--ink-faint);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin-top: 2px;
+}
+
 /* tabeller och listor */
 
 .rader { list-style: none; padding: 0; margin: 8px 0 0; }

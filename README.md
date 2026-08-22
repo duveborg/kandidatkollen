@@ -2,8 +2,8 @@
 
 En statisk sajt som kopplar **valsedeln 2026** till **vad ledamöterna faktiskt
 gjorde i riksdagen 2022–2026**. Du söker på ett namn du ser på din valsedel och
-får hur personen röstade, hur ofta hen gick mot sitt eget parti, vilka uppdrag
-hen haft — och om hen kandiderar igen.
+får hur personen röstade, hur ofta hen gick mot sitt eget parti, vad hen talat
+och skrivit om, vilka uppdrag hen haft — och om hen kandiderar igen.
 
 Valkompasser mäter vad partier *säger*. Den här sajten mäter vad ledamöter
 *gjorde*, och är därför användbar för det beslut väljaren har svårast att fatta:
@@ -29,10 +29,13 @@ alltid om. Kör om båda stegen för att uppdatera sajten.
 |---|---|---|
 | [data.riksdagen.se](https://data.riksdagen.se/) | Voteringar per ledamot, mandatperioden 2022/23–2025/26 (bulkdumpar) | per riksmöte |
 | ” | `person.csv` — ledamöter, utskott, ledigheter, statsråds- och partiuppdrag | löpande |
+| ” | `sagtochgjort.csv` — anföranden, motioner, frågor, interpellationer | löpande |
 | ” | `/utskottsforslag/{dok_id}` — vad varje voteringspunkt handlade om | per betänkande |
+| ” | `/personlista/` — mappning person-GUID ↔ intressent\_id | löpande |
 | [data.val.se](https://www.val.se/valresultat-och-statistik/statistik-och-data/radata-val-2026) | `kandidaturer.csv` — alla kandidater i valet 2026 | varje timme |
 
-Underlaget är 2 571 voteringar och 897 279 avlagda röster.
+Underlaget är 2 571 voteringar, 897 279 avlagda röster och 113 190
+aktivitetsposter.
 
 ## Metod, och vad den inte klarar
 
@@ -75,10 +78,29 @@ medan andra oppositionspartier avstår. Ett stort oppositionsparti framstår
 därför som ungefär lika oenigt med alla. Matrisen är en grov blockkarta, inte
 ett mått på politisk närhet.
 
+**Sagt och gjort har två fällor.** Filen blandar två id-scheman i samma
+kolumn: anföranden nycklar på personens GUID, medan motioner, frågor och
+interpellationer använder det numeriska `intressent_id`. Slår man bara upp via
+GUID försvinner samtliga 33 588 motionsposter som tysta nollor. Dessutom
+förekommer frågor och interpellationer i två roller — `undertecknare` är
+ledamoten som frågar, `besvaradav` är statsrådet som svarar — så bara
+undertecknare räknas, annars tillskrivs frågorna ministern.
+
+En motion kan ha upp till 26 undertecknare och datan anger inte vem som är
+huvudförfattare, så sajten säger "motioner hen står bakom", inte "skrivit".
+Sakområdena räknas på vilket utskott varje anförande och motion hör till; det
+mäter var tiden lagts, inte vilken ståndpunkt som tagits. Frågor och
+interpellationer saknar utskottskoppling i datan och ingår inte där.
+
 **Kopplingen till valsedeln sker på namn** och kan fela i två riktningar: två
 personer med samma namn kan slås samman, och en ledamot som stavas olika i de
 två källorna kan felaktigt framstå som att hen inte kandiderar. 296 av 426
 ledamöter matchas. Profilsidan flaggar osäkra fall.
+
+**Sökindexet innehåller båda grupperna** — alla 6 191 kandidater i
+riksdagsvalet plus de 130 sittande ledamöter som inte kandiderar igen. Utan de
+senare går en avgående ledamot inte att söka upp, fastän sidan *Lämnar
+riksdagen* länkar till hen.
 
 Sajten täcker bara riksdagen — inte kommun- och regionpolitik, och inte
 utskottsarbete, förhandlingar eller motionsskrivande, som ofta utgör

@@ -219,6 +219,108 @@ def in_period(datum, perioder):
     return any(f <= datum <= t for f, t in perioder if f and t)
 
 
+def load_aktivitet():
+    """iid -> vad ledamoten sagt och skrivit under mandatperioden.
+
+    Källan är riksdagens sagt-och-gjort-fil, en rad per person och dokument.
+    Tre fällor:
+
+    * Filen blandar två id-scheman i samma kolumn: anföranden nycklar på
+      personens GUID, medan motioner, frågor och interpellationer använder
+      det numeriska intressent_id direkt. Voteringsdatan använder det
+      numeriska. Vi översätter därför via id-karta.json (från
+      personlista-API:et) och faller tillbaka på id:t som det står.
+      Utan det faller samtliga motioner och frågor bort som tysta nollor.
+    * Skriftliga frågor och interpellationer förekommer i två roller:
+      "undertecknare" är ledamoten som frågar, "besvaradav" är statsrådet
+      som svarar. Bara undertecknare räknas, annars tillskrivs frågorna
+      ministern. Dokumenttypen frs (själva svaret) räknas inte alls.
+    * En motion har upp till 26 undertecknare och datan anger inte vem som
+      är huvudförfattare. Vi redovisar därför "motioner hen står bakom",
+      inte "skrivit".
+    """
+    kartpath = os.path.join(RAW, "id-karta.json")
+    if not os.path.exists(kartpath):
+        print("  saknar id-karta.json -- hoppar över aktivitetsdata")
+        return {}
+    with open(kartpath, encoding="utf-8") as f:
+        karta = json.load(f)
+
+    path = os.path.join(RAW, "sagtochgjort.csv")
+    if not os.path.exists(path):
+        print("  saknar sagtochgjort.csv -- hoppar över aktivitetsdata")
+        return {}
+
+    rm_set = set(RIKSMOTEN)
+    A = collections.defaultdict(lambda: {
+        "anforanden": 0, "talartid_s": 0, "motioner": 0, "fragor": 0,
+        "interpellationer": 0,
+        "amnen": collections.Counter(),      # utskott -> antal
+        "rubriker": collections.Counter(),   # debattrubrik -> antal
+        "per_rm": collections.defaultdict(collections.Counter),
+    })
+    okand = 0
+    with open(path, encoding="utf-8-sig") as f:
+        for x in csv.DictReader(f):
+            if x["riksmöte"] not in rm_set:
+                continue
+            raw = (x["id"] or "").strip()
+            # GUID -> slå upp; numeriskt id -> använd direkt
+            iid = karta.get(raw) or (raw if raw.isdigit() else None)
+            if not iid:
+                okand += 1
+                continue
+            typ, roll, organ = x["dokumenttyp"], x["roll"], x["organ"]
+            a = A[iid]
+
+            if typ == "anf" and roll == "anförande":
+                a["anforanden"] += 1
+                a["talartid_s"] += as_int(x["talartid"])
+                a["per_rm"][x["riksmöte"]]["anforanden"] += 1
+                if x["titel"]:
+                    a["rubriker"][x["titel"].strip()] += 1
+            elif typ == "mot" and roll == "undertecknare":
+                a["motioner"] += 1
+                a["per_rm"][x["riksmöte"]]["motioner"] += 1
+            elif typ == "fr" and roll == "undertecknare":
+                a["fragor"] += 1
+                a["per_rm"][x["riksmöte"]]["fragor"] += 1
+            elif typ == "ip" and roll == "undertecknare":
+                a["interpellationer"] += 1
+                a["per_rm"][x["riksmöte"]]["interpellationer"] += 1
+            else:
+                continue
+
+            # Ämne bara när organ är en känd utskottskod. För frågor och
+            # interpellationer innehåller fältet frågeställarens parti, och
+            # för vissa anföranden står "kamm" (allmän kammardebatt).
+            if organ in UTSKOTT_NAMN and typ in ("anf", "mot"):
+                a["amnen"][organ] += 1
+
+    print("  aktivitet för %d ledamöter (%d rader utan känt id)"
+          % (len(A), okand))
+    return A
+
+
+def summera_aktivitet(a):
+    """Gör om räknarna till en JSON-vänlig post."""
+    if not a:
+        return None
+    amnen = [{"organ": o, "namn": UTSKOTT_NAMN.get(o, o), "antal": n}
+             for o, n in a["amnen"].most_common(6)]
+    return {
+        "anforanden": a["anforanden"],
+        "talartid_min": round(a["talartid_s"] / 60),
+        "motioner": a["motioner"],
+        "fragor": a["fragor"],
+        "interpellationer": a["interpellationer"],
+        "amnen": amnen,
+        "rubriker": [{"rubrik": r, "antal": n}
+                     for r, n in a["rubriker"].most_common(6) if n > 1],
+        "per_rm": {rm: dict(c) for rm, c in a["per_rm"].items()},
+    }
+
+
 def load_kandidater():
     """Normaliserat namn -> lista av kandidaturer i riksdagsvalet 2026."""
     path = os.path.join(RAW, "kandidaturer.csv")
@@ -285,7 +387,7 @@ def partilinjer(votes):
     return out
 
 
-def build_ledamoter(votes, linjer, amnen, personinfo, kandidater):
+def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
     """En post per ledamot som förekommer i mandatperiodens rösträkningar.
 
     Nämnaren är antalet voteringar ledamoten står med i, eftersom riksdagen
@@ -390,6 +492,7 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater):
                 "exempel": [a for a in avv if a["rubrik"]][:12],
             },
             "kandidatur_2026": kand,
+            "aktivitet": summera_aktivitet(aktivitet.get(iid)),
         })
     out.sort(key=lambda x: x["namn"])
     print("  %d ledamöter" % len(out))
@@ -422,16 +525,25 @@ def koppla_kandidatur(rec, kandidater):
 
 
 def build_index(ledamoter, kandidater):
-    """Sökindex: alla riksdagskandidater 2026, med länk till ev. ledamotspost.
+    """Sökindex över alla som är sökbara på sajten.
 
-    Kompakt array-format för att hålla filen liten -- den laddas av alla
+    Det är två delvis överlappande grupper: samtliga kandidater i
+    riksdagsvalet 2026, och samtliga ledamöter som röstat under
+    mandatperioden. De senare måste med även när de inte kandiderar --
+    annars går en avgående ledamot inte att söka upp, fastän sidan
+    "Lämnar riksdagen" länkar till hen.
+
+    Kompakt array-format för att hålla filen liten; den laddas av alla
     besökare.
     """
     by_norm = {norm_namn(l["namn"]): l for l in ledamoter}
     rows = []
+    sedda = set()
+
     for nn, kandidaturer in kandidater.items():
         k = kandidaturer[0]
         l = by_norm.get(nn)
+        sedda.add(nn)
         rows.append([
             k["namn"],
             k["parti"] or k["parti_full"],
@@ -441,8 +553,22 @@ def build_index(ledamoter, kandidater):
             l["id"] if l else 0,
             round(l["rostning"]["narvaro"] * 100) if l and l["rostning"]["narvaro"] else 0,
         ])
+
+    avgaende = 0
+    for l in ledamoter:
+        nn = norm_namn(l["namn"])
+        if nn in sedda:
+            continue
+        avgaende += 1
+        # ordning 0 och 0 kandidaturer signalerar "kandiderar inte" i klienten
+        rows.append([
+            l["namn"], l["parti"], 0, l["valkrets"], 0, l["id"],
+            round(l["rostning"]["narvaro"] * 100) if l["rostning"]["narvaro"] else 0,
+        ])
+
     rows.sort(key=lambda r: r[0])
-    print("  sökindex: %d kandidater" % len(rows))
+    print("  sökindex: %d poster (%d kandidater + %d avgående ledamöter)"
+          % (len(rows), len(sedda), avgaende))
     return {
         "falt": ["namn", "parti", "ordning", "valkrets", "kandidaturer",
                  "ledamot_id", "narvaro_pct"],
@@ -511,6 +637,14 @@ def build_stats(votes, linjer, amnen, ledamoter):
         return round(xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2, 4)
 
     narvaro_median = median(l["rostning"]["narvaro"] for l in heltid)
+
+    def akt(lst, falt):
+        return median(l["aktivitet"][falt] for l in lst if l.get("aktivitet"))
+
+    aktivitet_median = {f: akt(heltid, f) for f in
+                        ("anforanden", "talartid_min", "motioner", "fragor",
+                         "interpellationer")}
+
     per_parti = {}
     for p in RIKSDAGSPARTIER:
         grp = [l for l in heltid if l["parti"] == p]
@@ -519,6 +653,8 @@ def build_stats(votes, linjer, amnen, ledamoter):
                 "antal": len(grp),
                 "narvaro_median": median(l["rostning"]["narvaro"] for l in grp),
                 "avvikelse_median": median(l["avvikelser"]["andel"] for l in grp),
+                "anforanden_median": akt(grp, "anforanden"),
+                "motioner_median": akt(grp, "motioner"),
             }
 
     return {
@@ -530,6 +666,7 @@ def build_stats(votes, linjer, amnen, ledamoter):
         "antal_ledamoter": len(ledamoter),
         "antal_heltid": len(heltid),
         "narvaro_median": narvaro_median,
+        "aktivitet_median": aktivitet_median,
         "per_parti": per_parti,
         "partienighet": matris,
         "knappa_voteringar": knappa[:60],
@@ -550,13 +687,16 @@ def main():
     personinfo = load_uppdrag()
     print("läser kandidater:")
     kandidater = load_kandidater()
+    print("läser sagt och gjort:")
+    aktivitet = load_aktivitet()
 
     print("beräknar partilinjer:")
     linjer = partilinjer(votes)
     print("  %d voteringar med minst en partilinje" % len(linjer))
 
     print("bygger ledamöter:")
-    ledamoter = build_ledamoter(votes, linjer, amnen, personinfo, kandidater)
+    ledamoter = build_ledamoter(votes, linjer, amnen, personinfo, kandidater,
+                                aktivitet)
 
     print("bygger sökindex:")
     index = build_index(ledamoter, kandidater)

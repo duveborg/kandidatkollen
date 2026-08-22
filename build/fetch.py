@@ -3,7 +3,9 @@
 
 Källor:
   - data.riksdagen.se  voteringar + personuppgifter (bulkdumpar)
+  - data.riksdagen.se  sagt och gjort: anföranden, motioner, frågor, interpellationer
   - data.riksdagen.se  utskottsforslag (ett anrop per betänkande, cachas)
+  - data.riksdagen.se  personlista, för id-mappning (se fetch_idkarta)
   - data.val.se        kandidaturer inför valet 2026
 
 Körs om vid behov; redan hämtade filer hoppas över om de inte är tomma.
@@ -77,6 +79,45 @@ def fetch_personer():
     print("  hämtar: %s" % url)
     unzip_one(get(url), dest)
     print("    -> %.1f MB" % (os.path.getsize(dest) / 1048576))
+
+
+def fetch_sagtochgjort():
+    """En fil för hela perioden 2010/11 och framåt: anföranden, motioner,
+    skriftliga frågor och interpellationer, en rad per person och dokument."""
+    dest = os.path.join(RAW, "sagtochgjort.csv")
+    if have(dest, 10_000_000):
+        print("  finns: sagtochgjort.csv")
+        return
+    url = "https://data.riksdagen.se/dataset/person/sagtochgjort.csv.zip"
+    print("  hämtar: %s" % url)
+    unzip_one(get(url), dest)
+    print("    -> %.1f MB" % (os.path.getsize(dest) / 1048576))
+
+
+def fetch_idkarta():
+    """Mappning person-GUID -> numeriskt intressent_id.
+
+    Sagt-och-gjort-datan nycklar på personens GUID medan voteringsdatan
+    nycklar på intressent_id. Bara personlista-API:et innehåller båda.
+    Svaret är 31 MB och vi behöver två fält, så vi sparar bara mappningen
+    -- det är enda stället där hämtsteget reducerar något.
+    """
+    dest = os.path.join(RAW, "id-karta.json")
+    if have(dest, 50_000):
+        print("  finns: id-karta.json")
+        return
+    url = "https://data.riksdagen.se/personlista/?utformat=json&rdlstatus=samtliga"
+    print("  hämtar: %s" % url)
+    import json
+
+    data = json.loads(get(url))["personlista"]["person"]
+    karta = {}
+    for p in data:
+        if p.get("sourceid") and p.get("intressent_id"):
+            karta[p["sourceid"]] = p["intressent_id"]
+    with open(dest, "w", encoding="utf-8") as f:
+        json.dump(karta, f)
+    print("    -> %d mappningar" % len(karta))
 
 
 def fetch_kandidater():
@@ -162,6 +203,10 @@ def main():
     fetch_voteringar()
     print("personer:")
     fetch_personer()
+    print("sagt och gjort:")
+    fetch_sagtochgjort()
+    print("id-mappning:")
+    fetch_idkarta()
     print("kandidater (val 2026):")
     fetch_kandidater()
     print("utskottsforslag:")
