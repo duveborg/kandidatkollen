@@ -704,6 +704,17 @@ dl.jamfor dt { color: var(--ink-faint); }
 dl.jamfor dd { font-variant-numeric: tabular-nums; }
 dl.jamfor dt .traff-meta { text-transform: none; letter-spacing: 0; }
 
+/* Raden är i sin helhet en länk, så ankaret måste bli flexbehållaren --
+   annars är .amne och .utfall två intilliggande inline-element och namnet
+   växer ihop med talet: "Henrik Vinge7 av 1 801". */
+.rader.jamforlista li > a {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .taggar-lista {
   list-style: none;
   padding: 0;

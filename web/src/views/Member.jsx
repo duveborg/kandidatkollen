@@ -70,7 +70,7 @@ function Comparisons({ member }) {
             : `Med ${formatNumber(withDiff)} av dem finns minst en votering där de röstade ` +
               "olika. Listan är sorterad efter antalet sådana voteringar.")}
       </p>
-      <ul className="rader">
+      <ul className="rader jamforlista">
         {others.map((other) => (
           <li key={other.id}>
             <a href={`#/jamfor/${member.id}/${other.id}`}>
