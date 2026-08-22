@@ -447,6 +447,61 @@ current = "dinplats";
   }
 }
 
+// 4e. ämnessökningen: sök, kontrollera att träffarna bär nämnare och att
+// titlarna länkar till dokumenten. Rangordningen är den känsliga delen —
+// utan nämnare och partimedian blir listan en tävling i skrivflit.
+current = "fragan";
+{
+  const intro = await visit("fragan", "#/fragan");
+  if (!/Vem driver din fråga/.test(intro)) fail("fragan", "saknar rubrik");
+
+  const index = JSON.parse(fs.readFileSync(path.join(SITE, "data", "fragan.json"), "utf8"));
+  if (index.dokument.length < 10000) {
+    fail("fragan", `${index.dokument.length} dokument i fragan.json`);
+  }
+  // varje postning ska peka på ett dokument som finns
+  for (const [member, poster] of Object.entries(index.ledamoter)) {
+    for (const i of poster) {
+      if (!index.dokument[i]) {
+        fail("fragan", `ledamot ${member} pekar på dokument ${i} som saknas`);
+        break;
+      }
+    }
+  }
+  // titlar utan procedurprefix: "med anledning av prop. 2021/22:240 ..." säger
+  // läsaren ingenting, och var sjunde titel såg ut så innan strippningen
+  const kvar = index.dokument.filter((d) => /^med anledning av (prop|skr)\./i.test(d[0]));
+  if (kvar.length) fail("fragan", `${kvar.length} titlar bär kvar sitt förslagsprefix`);
+
+  await page.fill(".sok input", "varg");
+  await page.waitForFunction(
+    () => document.querySelectorAll(".amnestraffar li").length > 0,
+    null,
+    { timeout: 10000 },
+  );
+  const traffar = await page.locator("ul.amnestraffar > li").count();
+  if (traffar < 3) fail("fragan", `sökningen gav ${traffar} ledamöter`);
+  const forsta = await page.locator("ul.amnestraffar > li").first().innerText();
+  if (!/\d+ av \d+/.test(forsta)) {
+    fail("fragan", `träffen saknar nämnare: ${forsta.replace(/\n/g, " ").slice(0, 70)}`);
+  }
+  if (!/partiets median: \d+ dokument/.test(forsta)) {
+    fail("fragan", "träffen saknar partiets median att läsa talet mot");
+  }
+  // titlarna är det som gör svaret kontrollerbart, och de ska länka vidare
+  const lankar = await page.locator(".amne-titlar a[href^='https://www.riksdagen.se']").count();
+  if (lankar < 3) fail("fragan", `bara ${lankar} titlar länkar till riksdagen`);
+
+  const text = await page.locator("#app").innerText();
+  if (!/Antal är inte genomslag/.test(text)) fail("fragan", "saknar noten om att antal inte är genomslag");
+  if (!/står bakom|Står bakom/.test(text)) fail("fragan", "saknar noten om undertecknare");
+
+  // sökordet ska hamna i adressen så en sökning går att dela
+  await page.waitForFunction(() => /#\/fragan\/varg$/.test(location.hash), null, { timeout: 5000 });
+  const delad = await visit("fragan/länk", "#/fragan/" + encodeURIComponent("strandskydd"));
+  if (!/dokument, \d+ ledamöter/.test(delad)) fail("fragan/länk", "delad sökning gav inget resultat");
+}
+
 const leaving = await visit("lämnar", "#/lamnar");
 if (!leaving.includes("Lämnar riksdagen")) fail("lämnar", "saknar rubrik");
 
@@ -459,6 +514,7 @@ for (const heading of [
   "Byte av partibeteckning",
   "Jämförelsen mellan två kandidater",
   "Var står du?",
+  "Vem driver din fråga?",
   "Källor",
 ]) {
   if (!about.includes(heading)) fail("om", `saknar avsnittet ”${heading}”`);
@@ -490,6 +546,7 @@ for (const [name, hash] of [
   ["valsedel", "#/valsedel"],
   ["valsedel/valkrets", "#/valsedel/" + encodeURIComponent("Stockholms kommun")],
   ["dinplats", "#/dinplats"],
+  ["fragan", "#/fragan/" + encodeURIComponent("varg")],
   ...(compareHash ? [["jamfor", compareHash]] : []),
   ["lämnar", "#/lamnar"],
   ["om", "#/om"],

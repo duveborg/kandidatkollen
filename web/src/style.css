@@ -83,7 +83,15 @@ a { color: var(--accent); }
   color: var(--ink);
 }
 
-.top nav { display: flex; gap: 18px; font-size: .88rem; }
+/* Menyn bär sex poster och rymdes inte på en 390 px-skärm när den femte kom
+   till. Den bryter rad i stället för att skjuta ut sidan i sidled. */
+.top nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: .88rem;
+  min-width: 0;
+}
 .top nav a { color: var(--ink-soft); text-decoration: none; }
 .top nav a:hover { color: var(--accent); text-decoration: underline; }
 
@@ -845,4 +853,42 @@ dl.jamfor dt .traff-meta { text-transform: none; letter-spacing: 0; }
 
 @media (max-width: 560px) {
   .svarsknappar button { flex: 1 1 100%; }
+}
+
+
+/* ------------------------------------------------------- ämnessökningen */
+
+.amnestraffar li { padding: 10px 0; }
+
+.amne-rad { display: flex; align-items: baseline; gap: 10px; }
+.amne-namn-kol { flex: 1; min-width: 0; }
+.amne-rad .traff-namn a { text-decoration: none; color: inherit; }
+.amne-rad .traff-namn a:hover { color: var(--accent); text-decoration: underline; }
+
+/* Titlarna är det som gör svaret kontrollerbart -- de ska gå att läsa, inte
+   bara räknas, och varje rad länkar till dokumentet hos riksdagen. */
+.amne-titlar {
+  list-style: none;
+  margin: 6px 0 0 26px;
+  padding: 0;
+  font-size: .88rem;
+}
+
+.amne-titlar li {
+  padding: 3px 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.amne-titlar a { color: var(--ink); }
+.amne-titlar a:hover { color: var(--accent); }
+.amne-titlar .traff-meta { margin: 0; }
+
+.amne-forslag .lankknapp { font-size: inherit; }
+
+@media (max-width: 560px) {
+  .amne-titlar { margin-left: 0; }
 }

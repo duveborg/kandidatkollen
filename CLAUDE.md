@@ -74,7 +74,8 @@ och versionshanteras inte — inget under `site/` redigeras för hand.
   fritt. Men inga UI-ramverk eller routerbibliotek utöver React: routern är
   30 rader i `App.jsx`, och hashadresserna (`#/ledamot/<id>`, `#/block`,
   `#/lamnar`, `#/om`, `#/kandidat/<namn>`, `#/valsedel`,
-  `#/valsedel/<valkrets>`, `#/jamfor/<id>/<id>`, `#/dinplats`) är publicerade
+  `#/valsedel/<valkrets>`, `#/jamfor/<id>/<id>`, `#/dinplats`,
+  `#/fragan/<sökord>`) är publicerade
   och får inte ändras. Att *lägga
   till* ett segment går bra: `#/kandidat/<namn>/<pid>` pekar ut vilken av
   flera namnar som avses, och den gamla formen fortsätter fungera.
@@ -133,6 +134,9 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | Golvet mot reservanttaket | `QUIZ_FORSLAG_TAK` (4 frågor från samma reservantuppsättning) och `QUIZ_MIN_HOGER` (5 frågor från regeringssidan) går inte ihop: **52 av poolens 54 högerfrågor är reservationer av SD ensamt**, de två övriga av KD och SD. Med taket på fyra räckte högersidan till exakt två uppsättningar, och den tredje stannade på fyra frågor — inte för att poolen tagit slut. Golvet väger tyngre, så ifyllnadssteget för högersidan får gå till `QUIZ_FORSLAG_TAK_GOLV`. Övriga steg lyder taket. |
 | Uppsättningarnas tal hör ihop | `laddning`, `skala` och `trohet` räknas för just de femton frågorna. Lånas de mellan uppsättningar hamnar läsaren fel utan att något ser fel ut. Klienten läser dem därför alltid ur den uppsättning svaren gäller, och `stats.quiz.trohet` är **minimum över uppsättningarna**, inte den förstas. |
 | Andra axeln i quizet | Frågor valda enbart på partiseparation och bredd ligger nästan alla längs komponent 1, och läsarens lodräta placering blir brus — troheten var 0,50. Två frågor väljs därför på sin laddning i komponent 2, vilket lyfter den till 0,92. Ta inte bort `QUIZ_ANDRA_AXELN` utan att mäta om. |
+| Ämnessökningens roller | `fr` och `ip` i två roller igen: utan `roll == "undertecknare"` blev ansvarigt statsråd sajtens främsta expert på varje ämne — "Landsbygdsminister Peter Kullgren" toppade varg, Ebba Busch elpriser. `load_aktivitet()` filtrerar rätt, och ämnesindexet plockas upp *där* just för att filtret och id-kartan ska finnas på ett enda ställe. |
+| Förslagsprefixet | 5 683 poster heter "med anledning av prop. 2021/22:240 …". Ämnet står efter numret, så prefixet strippas i `dokumenttitel()` — annars börjar var sjunde titel med samma sju ord och sökningen på "anledning" ger 5 683 träffar. |
+| Rangordning på dokumentantal | Fungerar inte åt något håll. På antal toppar Sten Bergheden (612 dokument) tio av 29 provsökningar och Ann-Sofie Lifvenhage (530) sju till. På andel av egen produktion toppar ledamöter med **ett enda** dokument. Klienten sorterar därför på antal med andelen som skiljedomare, och visar alltid både ledamotens totaltal och partiets median. |
 | Utskottsforslag | 894 betänkanden efterfrågas, 854 ger användbart svar. `load_amnen()` hoppar över filer <200 B, och 24 refererade voteringar saknar därför utskottsförslag: 3 bland avvikelseexemplen och de knappa voteringarna, 22 av jämförelsevyns 384, varav en är samma votering. Gränssnittet måste tåla det, och rubriken faller tillbaka på betänkandebeteckningen, som alltid står i voteringsraden. |
 
 ## Redaktionella regler som inte får brytas
@@ -217,6 +221,10 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
   frågorna och tre fjärdedelar i tolv eller färre, så utan golv toppas listan
   av den som har minst att jämföra med (7 av 7 slår 9 av 10). Golvet är 65 %
   av de frågor läsaren svarat på, och medianen står intill talen.
+- **Dokumentantal jämförs aldrig över partigränsen utan median.**
+  Medianledamoten i C står bakom 158 dokument, i L 18. Ett moderat tal läst
+  mot ett miljöpartistiskt mäter partiets arbetssätt, inte personens
+  engagemang. Partiets median står intill varje träff i ämnessökningen.
 - **Skriv procentenheter, inte procent**, för skillnader mot medianen.
 - **Varje förbehåll i koden ska också stå på `#/om`**, formulerat för en
   läsare. Lägger du till ett mått, lägg till dess begränsning där.
@@ -245,14 +253,14 @@ web/src/components/  Stat, Note, HitRow, CandidateBadge, Vote, CandidacyCard,
                      PersonalVoteCard, ActivitySection,
                      charts/{HeatTable, Timeline, PoliticalSpace, labels}
 web/src/views/       Home, Member, Candidate, Compare, Ballot, Leaving,
-                     BlockMap, Quiz, About
+                     BlockMap, Quiz, Topic, About
 web/src/style.css    ljust/mörkt via prefers-color-scheme, --parti per parti
 test/smoke.mjs       Playwright-rökprov över alla vyer
 site/                enbart byggd output
 site/data/           index.json + stats.json laddas direkt; rum.json vid
                      #/block; valsedlar.json vid #/valsedel; jamforelser.json
                      vid #/jamfor; quiz.json + rum.json vid #/dinplats;
-                     voteringar.json vid utfällning. quiz.json bär alla åtta
+                     fragan.json vid #/fragan; voteringar.json vid utfällning. quiz.json bär alla åtta
                      uppsättningar (189 kB) och växer linjärt med
                      ANTAL_VARIANTER
 ```
@@ -297,6 +305,8 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | knappa voteringar (≤10) | 157, medianledamoten missade 14 |
 | PCA | 362 ledamöter, 43 % + 14 % förklarad varians |
 | aktivitetsposter | 113 190 |
+| ämnessökningen | 19 948 dokument, 409 ledamöter, 40 526 postningar, 1 723 kB (≈460 kB över nätet) |
+| ämnesöverlapp | medianparet på samma valsedel delar 0,09 av sina 25 vanligaste ämnesord — röstningen skiljer dem inte åt, det de skriver om gör det |
 | valsedlar | 285 i 29 valkretsar, 10 521 kandidatplatser, 95 ogiltiga |
 | kandidatplatser i rökprovet | jämförs mot 10 521 med 3 % marginal — kandidaturfilen ändras varje timme, medan de regressioner talet vaktar mot flyttar tusentals rader |
 | partibytare | 9, samtliga från parti till politiskt obunden |

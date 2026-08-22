@@ -90,6 +90,7 @@ jobs:
           test -f site/index.html
           test -f site/data/index.json
           test -f site/data/quiz.json
+          test -f site/data/fragan.json
           tmp="$RUNNER_TEMP/sajt"
           mkdir -p "$tmp"
           cp -R site/. "$tmp/"

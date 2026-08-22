@@ -95,6 +95,21 @@ export function loadComparisons() {
   return comparisonsPromise;
 }
 
+/* fragan.json is only needed by #/fragan: every motion, written question and
+   interpellation title of the term plus who stands behind each. 1,7 MB, some
+   460 kB over the wire, fetched when the reader opens the view. */
+let topicsPromise = null;
+
+export function loadTopics() {
+  if (!topicsPromise) {
+    topicsPromise = fetchJson("data/fragan.json").catch((err) => {
+      topicsPromise = null;
+      throw err;
+    });
+  }
+  return topicsPromise;
+}
+
 /* quiz.json is only needed by #/dinplats. It carries the fifteen questions,
    every member's vote on them and the loadings that place a reader on the
    block map — 23 kB, fetched when the reader opens the test. */

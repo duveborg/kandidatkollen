@@ -370,6 +370,35 @@ def in_period(datum, perioder):
     return any(f <= datum <= t for f, t in perioder if f and t)
 
 
+# "med anledning av prop. 2021/22:240 BNP-indexering av skatterna på
+# kemikalier" -- numret säger läsaren ingenting, men ämnet står efter det.
+# 5 683 poster i perioden ser ut så, och utan strippningen börjar var sjunde
+# titel med samma sju ord.
+FORSLAGSPREFIX = re.compile(
+    r"^med anledning av (prop|skr|framst|redog)\.?\s*\d{4}/\d{2}:\d+\s*", re.I)
+
+
+def dokumenttitel(t):
+    """Titeln som den ska läsas, eller tom sträng om den inte duger."""
+    t = re.sub(r"\s+", " ", stada_text(t))
+    t = FORSLAGSPREFIX.sub("", t)
+    if len(t) < 8:
+        return ""
+    return t[:1].upper() + t[1:]
+
+
+def spara_dokument(dokument, bakom, x, iid):
+    """Lägger dokumentet i ämnesunderlaget och noterar vem som står bakom."""
+    titel = dokumenttitel(x["titel"])
+    if not titel:
+        return
+    dok_id = (x["dokument_id"] or "").strip()
+    if not dok_id:
+        return
+    dokument[dok_id] = (titel, x["dokumenttyp"], x["riksmöte"])
+    bakom[dok_id].add(iid)
+
+
 def load_aktivitet():
     """iid -> vad ledamoten sagt och skrivit under mandatperioden.
 
@@ -389,18 +418,23 @@ def load_aktivitet():
     * En motion har upp till 26 undertecknare och datan anger inte vem som
       är huvudförfattare. Vi redovisar därför "motioner hen står bakom",
       inte "skrivit".
+
+    Returnerar två saker: räknarna per ledamot, och dokumenten själva --
+    titel, typ och riksmöte per dok_id plus vilka som står bakom vart och
+    ett. Det andra är underlaget för ämnessökningen, och plockas upp här för
+    att rollfiltret och id-kartan bara ska finnas på ett ställe.
     """
     kartpath = os.path.join(RAW, "id-karta.json")
     if not os.path.exists(kartpath):
         print("  saknar id-karta.json -- hoppar över aktivitetsdata")
-        return {}
+        return {}, {}
     with open(kartpath, encoding="utf-8") as f:
         karta = json.load(f)
 
     path = os.path.join(RAW, "sagtochgjort.csv")
     if not os.path.exists(path):
         print("  saknar sagtochgjort.csv -- hoppar över aktivitetsdata")
-        return {}
+        return {}, {}
 
     rm_set = set(RIKSMOTEN)
     A = collections.defaultdict(lambda: {
@@ -410,6 +444,8 @@ def load_aktivitet():
         "rubriker": collections.Counter(),   # debattrubrik -> antal
         "per_rm": collections.defaultdict(collections.Counter),
     })
+    dokument = {}                                     # dok_id -> (titel, typ, rm)
+    bakom = collections.defaultdict(set)              # dok_id -> iid
     okand = 0
     with open(path, encoding="utf-8-sig") as f:
         for x in csv.DictReader(f):
@@ -433,12 +469,15 @@ def load_aktivitet():
             elif typ == "mot" and roll == "undertecknare":
                 a["motioner"] += 1
                 a["per_rm"][x["riksmöte"]]["motioner"] += 1
+                spara_dokument(dokument, bakom, x, iid)
             elif typ == "fr" and roll == "undertecknare":
                 a["fragor"] += 1
                 a["per_rm"][x["riksmöte"]]["fragor"] += 1
+                spara_dokument(dokument, bakom, x, iid)
             elif typ == "ip" and roll == "undertecknare":
                 a["interpellationer"] += 1
                 a["per_rm"][x["riksmöte"]]["interpellationer"] += 1
+                spara_dokument(dokument, bakom, x, iid)
             else:
                 continue
 
@@ -450,7 +489,8 @@ def load_aktivitet():
 
     print("  aktivitet för %d ledamöter (%d rader utan känt id)"
           % (len(A), okand))
-    return A
+    print("  %d dokument med läsbar titel" % len(dokument))
+    return A, {"dokument": dokument, "bakom": bakom}
 
 
 def summera_aktivitet(a):
@@ -1537,6 +1577,14 @@ def _par(n):
     return n * (n - 1) // 2
 
 
+def _median(xs):
+    v = sorted(xs)
+    n = len(v)
+    if not n:
+        return 0
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2.0
+
+
 def _skilda(grupper, nyckel):
     """Antal par inom grupperna som nyckeln delar upp."""
     v = 0
@@ -1905,6 +1953,129 @@ def build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas):
         "ur_pool": len(kandidater),
     }
 
+
+# ------------------------------------------------------------ ämnessökning
+
+# Ord som säger något om formen men inget om ämnet, eller som bara är
+# riksdagens egen apparat. Används enbart för att föreslå sökord -- själva
+# sökningen går mot hela titeln och filtrerar ingenting.
+FRAGAN_STOPP = set("""
+utgiftsområde anslag ändring ändringar lagen lag förslag förslaget frågan frågor
+åtgärder insatser arbete arbetet sverige sveriges svenska svensk svenskt vissa
+några andra vidare avseende riksdagens riksdagen regeringens regeringen statens
+statlig statliga nationell nationella nationellt utredning utvärdering uppföljning
+rapport riksrevisionens redovisning möjlighet möjligheter behovet behov krav system
+verksamhet verksamheten hela landet delar samband fråga mellan skydd översyn
+personer ansvar införande regler rättigheter förutsättningar ersättning genom längs
+kommun kommuner produktion
+""".split())
+
+# Komparativer och particip är inte ämnen: "tydligare", "underlättande",
+# "säkrad" toppade förslagslistan innan de sållades bort.
+FRAGAN_ANDELSE = re.compile(r"(are|ande|ende|ad|at|igt)$")
+
+# Ett sökord föreslås bara om det finns i så här många dokument. Under det
+# blir förslaget en kuriositet snarare än ett ämne.
+FRAGAN_MIN_FORSLAG = 25
+FRAGAN_ANTAL_FORSLAG = 12
+
+
+def build_fragan(skrivet, ledamoter):
+    """Sökbart index över vad ledamöterna skrivit motioner och frågor om.
+
+    Röstningen skiljer inte två partikamrater åt -- medianparet på samma
+    valsedel röstade olika i 2 voteringar av omkring 2 000 -- men det de
+    skriver om gör det. Bland de par som har minst 20 dokument var är
+    medianöverlappet i deras 25 vanligaste ämnesord 0,09, alltså ungefär två
+    ord av 25, och nitton par delar inte ett enda. Det är hela skälet till
+    att vyn finns: den svarar på frågan valsedeln ställer och voteringarna
+    inte kan svara på.
+
+    Anföranden ingår inte. Titeln på ett anförande är debattens, inte
+    ledamotens, och de skulle fyrdubbla filen med ord som ledamoten inte
+    valt själv.
+
+    Antalet dokument är inte ett mått på genomslag och tål ingen
+    rangordning över partigränsen: medianledamoten i C har 158 dokument, i
+    L 18. Klienten visar därför alltid nämnaren och partiets median, och
+    sorterar lika träffar på andel av ledamotens egen produktion -- annars
+    toppar de flitigaste skrivarna varje sökning. Sten Bergheden (612
+    dokument) låg i topp tre på tio av 29 provsökningar.
+    """
+    dokument = (skrivet or {}).get("dokument") or {}
+    bakom = (skrivet or {}).get("bakom") or {}
+    if not dokument:
+        return None
+
+    kanda = {l["id"]: l for l in ledamoter}
+    ordning = sorted(d for d in dokument if bakom.get(d) & set(kanda))
+    idx = {d: i for i, d in enumerate(ordning)}
+
+    per_ledamot = collections.defaultdict(list)
+    for d in ordning:
+        for iid in bakom[d]:
+            if iid in kanda:
+                per_ledamot[iid].append(idx[d])
+
+    rader = []
+    for d in ordning:
+        titel, typ, rm = dokument[d]
+        rader.append([titel, typ, rm, d, len(bakom[d])])
+
+    # Partiets median, för att ett moderat tal inte ska läsas som om det vore
+    # jämförbart med ett miljöpartistiskt.
+    per_parti = collections.defaultdict(list)
+    for iid, poster in per_ledamot.items():
+        per_parti[kanda[iid]["parti"]].append(len(poster))
+    medianer = {p: int(_median(v)) for p, v in per_parti.items() if len(v) >= 3}
+
+    # Sökordsförslag, för den som inte vet var hen ska börja. Rankas inte på
+    # hur vanligt ordet är -- då blir förslagen "skydd", "översyn" och
+    # "personer" -- utan på hur koncentrerat det är: andelen av dokumenten
+    # som den flitigaste ledamoten i ämnet står bakom. Ett ord där någon
+    # driver frågan ger ett intressant svar; ett ord alla nuddat vid gör inte
+    # det.
+    traffar = collections.defaultdict(set)
+    for i, d in enumerate(ordning):
+        for ord_ in {w.lower() for w in re.findall(r"[a-zåäöéüA-ZÅÄÖ]{5,}",
+                                                   dokument[d][0])}:
+            if ord_ not in FRAGAN_STOPP and not FRAGAN_ANDELSE.search(ord_):
+                traffar[ord_].add(i)
+    agare = collections.defaultdict(list)
+    for iid, poster in per_ledamot.items():
+        for i in poster:
+            agare[i].append(iid)
+    rankade = []
+    for ord_, poster in traffar.items():
+        if len(poster) < FRAGAN_MIN_FORSLAG:
+            continue
+        c = collections.Counter()
+        for i in poster:
+            for iid in agare[i]:
+                c[iid] += 1
+        if not c:
+            continue
+        rankade.append((c.most_common(1)[0][1] / float(len(poster)),
+                        len(poster), ord_))
+    rankade.sort(key=lambda r: (-r[0], -r[1], r[2]))
+    forslag = [o for _, _, o in rankade[:FRAGAN_ANTAL_FORSLAG]]
+
+    tunna = sum(1 for poster in per_ledamot.values() if len(poster) < 10)
+    print("  ämnessökning: %d dokument, %d ledamöter, %d postningar "
+          "(%d med under 10 dokument)"
+          % (len(ordning), len(per_ledamot),
+             sum(len(v) for v in per_ledamot.values()), tunna))
+    print("  sökordsförslag: %s" % ", ".join(forslag))
+
+    return {
+        "dokument": rader,
+        "ledamoter": {iid: poster for iid, poster in sorted(per_ledamot.items())},
+        "parti_median": medianer,
+        "forslag": forslag,
+        "riksmoten": RIKSMOTEN,
+    }
+
+
 def build_index(ledamoter, kandidater):
     """Sökindex över alla som är sökbara på sajten.
 
@@ -2242,7 +2413,7 @@ def main():
     print("läser personvalet 2022:")
     val2022 = load_val2022()
     print("läser sagt och gjort:")
-    aktivitet = load_aktivitet()
+    aktivitet, skrivet = load_aktivitet()
 
     knappa = knappa_ids(votes)
     print("  %d knappa voteringar (högst 10 rösters marginal)" % len(knappa))
@@ -2272,6 +2443,9 @@ def main():
 
     koppla_jamforbara(ledamoter, jamforelser)
     stats["jamforelser"] = jamforelser["sammanfattning"]
+
+    print("bygger ämnessökning:")
+    fragan = build_fragan(skrivet, ledamoter)
 
     print("bygger quiz:")
     reservationer = load_reservationer()
@@ -2315,6 +2489,9 @@ def main():
     print("  valsedlar.json  %.0f kB" % (n / 1024))
     n = dump("jamforelser.json", jamforelser)
     print("  jamforelser.json  %.0f kB" % (n / 1024))
+    if fragan:
+        n = dump("fragan.json", fragan)
+        print("  fragan.json %.0f kB" % (n / 1024))
     if quiz:
         n = dump("quiz.json", quiz)
         print("  quiz.json   %.0f kB" % (n / 1024))

@@ -16,6 +16,10 @@ partier som förlorade dem skrev dem, och se vilka ledamöter som röstade som d
 — och vilka av dem som står på en valsedel där du bor. Frågorna byts vid
 midnatt: bygget gör åtta uppsättningar som inte delar en enda fråga.
 
+Står två namn från samma parti på din lista skiljer röstningen dem sällan åt.
+Sök då på ett ämne i stället — *varg*, *elpris*, *hemlöshet* — och se vem som
+faktiskt lagt motionerna och frågorna om det.
+
 Valkompasser mäter vad partier *säger*. Den här sajten mäter vad ledamöter
 *gjorde*, och är därför användbar för det beslut väljaren har svårast att fatta:
 personkryssen.
@@ -141,6 +145,15 @@ skalfaktorn hör till just de femton. Räknar man om ledamöternas platser på d
 viset hamnar de nära sina riktiga: 0,98 mot 0,92 i den första uppsättningen och
 som lägst 0,96 mot 0,80 i den åttonde. Det är alltid den lodräta axeln som
 tappar först, och en uppsättning som faller under golvet publiceras inte.
+
+**Ämnessökningen bygger på vad ledamoten själv står bakom.** Motioner,
+skriftliga frågor och interpellationer under mandatperioden, 19 948 dokument.
+Anföranden ingår inte — rubriken där är debattens, inte ledamotens — och av
+frågorna räknas bara frågeställaren, aldrig statsrådet som svarade. Antalet är
+inget mått på genomslag och tål ingen jämförelse mellan partier: medianledamoten
+i Centerpartiet står bakom 158 dokument, i Liberalerna 18. Därför står både
+ledamotens eget totaltal och partiets median intill varje träff. En motion kan
+ha 26 undertecknare, så sajten säger "står bakom", aldrig "skrivit".
 
 **Knappa voteringar redovisas som andel, inte som antal missade.** 157
 voteringar under perioden avgjordes med högst tio rösters marginal, och

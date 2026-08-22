@@ -92,6 +92,18 @@ export function Home() {
         </p>
       </div>
 
+      <div className="kort">
+        <h2>Två namn på samma lista, och du vet inte vem?</h2>
+        <p>
+          {"Röstningen skiljer dem sällan åt — medianparet på samma valsedel röstade " +
+            "olika i 2 voteringar av omkring 2 000. Det de skriver motioner och frågor " +
+            "om skiljer dem åt nästan helt. Sök på ett ämne och se vem som driver det."}
+        </p>
+        <p className="hint">
+          <a href="#/fragan">Vem driver din fråga? →</a>
+        </p>
+      </div>
+
       <h2>Riksdagen 2022–2026 i siffror</h2>
       <StatRow>
         <Stat value={formatNumber(stats.antal_voteringar)} label="voteringar" />

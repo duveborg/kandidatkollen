@@ -224,6 +224,40 @@ export function About() {
             "med stor försiktighet."}
         </p>
 
+        <h2>Vem driver din fråga?</h2>
+        <p>
+          {"Sökningen går mot titlarna på de motioner, skriftliga frågor och " +
+            "interpellationer ledamöterna själva står bakom under mandatperioden. " +
+            "Anföranden ingår inte: rubriken på ett anförande är debattens, inte " +
+            "ledamotens. Skriftliga frågor och interpellationer förekommer i två roller " +
+            "i datan — den som frågar och statsrådet som svarar — och bara frågeställaren " +
+            "räknas. Utan den åtskillnaden blir ansvarigt statsråd sajtens främsta " +
+            "expert på varje ämne hen någonsin besvarat en fråga om."}
+        </p>
+        <p>
+          {"Vyn finns på grund av ett negativt resultat: röstningen skiljer inte två " +
+            "kandidater på samma valsedel åt. Det de skriver om gör det. Bland de par som " +
+            "har minst tjugo dokument var överlappar de tjugofem vanligaste ämnesorden " +
+            "med 0,09 — ungefär två ord av tjugofem — och nitton par delar inte ett enda."}
+        </p>
+        <p>
+          {"Antalet dokument är inget mått på genomslag. En motion avslås nästan alltid, " +
+            "och hur många en ledamot lägger säger mer om partiets arbetssätt än om " +
+            "personen: medianledamoten i Centerpartiet står bakom omkring 158 dokument, i " +
+            "Liberalerna 18. Därför står ledamotens eget totaltal vid varje träff och " +
+            "partiets median intill det. Rangordningen sker på antal träffar med andelen " +
+            "av ledamotens egen produktion som skiljedomare — sorterar man bara på antal " +
+            "toppar de flitigaste skrivarna varenda sökning, och bara på andel hamnar den " +
+            "som skrivit ett enda dokument överst."}
+        </p>
+        <p>
+          {"En motion kan ha upp till 26 undertecknare och datan anger ingen " +
+            "huvudförfattare, så sajten säger ”står bakom”, aldrig ”skrivit”. Antalet " +
+            "undertecknare står vid de titlar som har fler än en. Ett fyrtiotal ledamöter " +
+            "— statsråd och sent tillträdda — har färre än tio dokument och kan aldrig " +
+            "toppa en sökning."}
+        </p>
+
         <h2>Valsedlarna</h2>
         <p>
           {"Vyn Din valsedel visar de fastställda valsedlarna i en valkrets i den ordning " +
