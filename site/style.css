@@ -387,6 +387,120 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .tabell-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+/* ---------------------------------------------------------------- blockkartan */
+
+/* enighet som värmekarta: intensiteten sätts inline per cell */
+table.heat td.h {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+
+table.heat td.h span {
+  display: block;
+  padding: 9px 6px;
+  border-radius: 4px;
+  margin: 1px;
+}
+
+table.heat th.hoek { width: 2.6rem; }
+table.heat th { text-align: center; }
+table.heat th.rad { text-align: left; padding-right: 10px; }
+
+/* partiväljare */
+
+.valjare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 4px;
+}
+
+.valjare button {
+  font: inherit;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: .82rem;
+  padding: 5px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.valjare button:hover { border-color: var(--accent); color: var(--ink); }
+
+.valjare button[aria-pressed="true"] {
+  background: var(--parti, var(--accent));
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* SVG-diagram */
+
+figure.diagram {
+  margin: 14px 0 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+figure.diagram svg { display: block; width: 100%; height: auto; }
+
+figure.diagram figcaption {
+  font-size: .8rem;
+  color: var(--ink-faint);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin-top: 12px;
+}
+
+.diagram .rutnat { stroke: var(--line); stroke-width: 1; }
+.diagram .axel { stroke: var(--ink-faint); stroke-width: 1; }
+
+.diagram text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  fill: var(--ink-faint);
+  font-size: 11px;
+}
+
+.diagram text.partietikett {
+  font-weight: 700;
+  font-size: 13px;
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 3px;
+}
+
+.diagram text.axeltitel { fill: var(--ink-soft); font-size: 11px; }
+
+.diagram .punkt { opacity: .72; }
+.diagram .punkt:hover { opacity: 1; }
+
+.diagram .linje { fill: none; stroke-width: 2.5; stroke-linejoin: round; }
+.diagram .linje.dov { opacity: .18; stroke-width: 1.5; }
+
+/* legend */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 14px 0 0;
+  font-size: .8rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: var(--ink-soft);
+}
+
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i {
+  width: 10px; height: 10px; border-radius: 99px;
+  background: var(--parti, var(--line));
+  display: inline-block;
+}
+
 /* om-sidan */
 
 .prosa { max-width: 66ch; }

@@ -78,6 +78,22 @@ medan andra oppositionspartier avstår. Ett stort oppositionsparti framstår
 därför som ungefär lika oenigt med alla. Matrisen är en grov blockkarta, inte
 ett mått på politisk närhet.
 
+**Det politiska rummet är en PCA i ren Python.** En matris med en rad per
+ledamot och en kolumn per votering (Ja +1, Nej −1, Avstår och utebliven röst
+0), varje votering centrerad, och de två starkaste principalkomponenterna
+uttagna med potensiteration. Gram-matrisen bildas aldrig explicit — bara
+produkten `G·v = M·(Mᵀ·v)` behövs, vilket tar 0,1 sekunder per iteration och
+gör att projektet slipper numpy som beroende. Utfallet förklarar 43 % + 14 %
+av variationen, och dimension 1 skiljer i praktiken regeringsunderlaget från
+oppositionen medan dimension 2 lyfter ut V och MP.
+
+Två begränsningar: axlarnas tecken är godtyckligt, så det är avstånden som
+betyder något, inte riktningen. Och eftersom utebliven röst kodas som 0 dras
+en ledamot som röstar sällan mot mitten. Utan ett deltagandekrav framstod
+Jimmie Åkesson (14 % röstandel) som SD:s största avvikare, vilket säger något
+om hans närvaro och ingenting om hans politik — därför krävs 60 % deltagande,
+vilket utesluter exakt två ledamöter, som namnges i gränssnittet.
+
 **Sagt och gjort har två fällor.** Filen blandar två id-scheman i samma
 kolumn: anföranden nycklar på personens GUID, medan motioner, frågor och
 interpellationer använder det numeriska `intressent_id`. Slår man bara upp via
@@ -115,8 +131,14 @@ site/              statisk sajt, inga beroenden
   index.html
   app.js           router och vyer, vanilla JS
   style.css        ljust/mörkt läge, partifärger
-  data/            genererad — index.json, stats.json, ledamot/<id>.json
+  data/            genererad — index.json, stats.json, rum.json,
+                   ledamot/<id>.json
 ```
+
+Sajten har fyra vyer: sökningen med ledamotsprofiler, **Blockkartan** (det
+politiska rummet, enighetsmatrisen, blockens rörelse per riksmöte och de
+knappaste voteringarna), **Lämnar riksdagen** och **Om siffrorna**.
+`rum.json` laddas först när Blockkartan öppnas.
 
 `data/` och `site/data/*.json` är genererade och versionshanteras inte.
 

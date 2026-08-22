@@ -11,6 +11,7 @@ var app = document.getElementById("app");
 var state = {
   index: null,   // {falt, rader}
   stats: null,
+  rum: null,     // laddas först när blockkartan öppnas
   radkarta: null // normaliserat namn -> rad
 };
 
@@ -239,14 +240,19 @@ function visaStart() {
     h("a", { href: "#/lamnar", text: "Se vilka som lämnar riksdagen →" })
   ]));
 
-  app.appendChild(h("h2", { text: "Hur ofta röstade partierna lika?" }));
-  app.appendChild(h("p", {
-    class: "hint",
-    text: "Andel av voteringarna där två partier landade på samma ståndpunkt. " +
-          "Läs den som en grov karta över blocken, inte som ett exakt mått — " +
-          "se Om siffrorna."
-  }));
-  app.appendChild(enighetsTabell(s));
+  app.appendChild(h("h2", { text: "Hela riksdagen på en karta" }));
+  app.appendChild(h("div", { class: "kort" }, [
+    h("p", {
+      text: "Blockkartan visar samma voteringar från motsatt håll: vilka " +
+            "partier som röstar ihop, hur blocken rört sig under " +
+            "mandatperioden, och hur riksdagen ser ut när man låter " +
+            "röstningen själv rita kartan utan någon inmatad " +
+            "höger-vänster-skala."
+    }),
+    h("p", { class: "hint" }, [
+      h("a", { href: "#/block", text: "Öppna blockkartan →" })
+    ])
+  ]));
 
   input.focus();
 }
@@ -275,34 +281,6 @@ function medianJmf(varde, median, enhet) {
   var ord = kvot >= 1.15 ? "över" : (kvot <= 0.85 ? "under" : "kring");
   return "median " + (enhet === "tid" ? timmar(median) : num(median)) +
     " — " + ord + " snittet";
-}
-
-function enighetsTabell(s) {
-  var partier = s.partier;
-  var tabell = h("table", { class: "data" });
-  var thead = h("tr", {}, [h("th", { text: "" })]);
-  partier.forEach(function (p) { thead.appendChild(h("th", { text: p })); });
-  tabell.appendChild(h("thead", {}, [thead]));
-
-  var tbody = h("tbody");
-  partier.forEach(function (a) {
-    var tr = h("tr", {}, [h("th", { text: a })]);
-    partier.forEach(function (b) {
-      if (a === b) {
-        tr.appendChild(h("td", { class: "num", text: "—" }));
-        return;
-      }
-      var v = s.partienighet[a + "-" + b];
-      if (v == null) v = s.partienighet[b + "-" + a];
-      tr.appendChild(h("td", {
-        class: "num",
-        text: v == null ? "·" : Math.round(v * 100) + ""
-      }));
-    });
-    tbody.appendChild(tr);
-  });
-  tabell.appendChild(tbody);
-  return h("div", { class: "tabell-scroll" }, [tabell]);
 }
 
 // ------------------------------------------------------------- vy: ledamot
@@ -670,6 +648,394 @@ function visaLamnar() {
   app.appendChild(h("a", { class: "tillbaka", href: "#/", text: "← Till sökningen" }));
 }
 
+// ------------------------------------------------------------- vy: blockkartan
+
+var PARTIFARG = {
+  S: "#e8112d", M: "#52bdec", SD: "#ddd000", C: "#009933",
+  V: "#af0000", KD: "#2b3a8f", MP: "#83cf39", L: "#006ab3", "-": "#8a8a8a"
+};
+
+/* Skjuter isär etiketter som annars skriver över varandra. Partier med
+   identisk enighet — M, KD och L ligger alla på 100 % — hamnar på samma
+   y-koordinat, och då blir texten oläslig.
+
+   Bara etiketter som ligger nära även i x knuffas, annars skulle två
+   etiketter i motsatta hörn av ett spridningsdiagram flytta varandra utan
+   att ha överlappat. xNara sätts till diagrammets bredd när alla etiketter
+   står i samma kolumn, som i tidslinjen. */
+function undvikKollision(etiketter, minAvstand, xNara) {
+  var dy = minAvstand || 14;
+  var dx = xNara == null ? 44 : xNara;
+  etiketter.sort(function (a, b) { return a.y - b.y; });
+  for (var i = 1; i < etiketter.length; i++) {
+    for (var j = i - 1; j >= 0; j--) {
+      if (Math.abs(etiketter[i].x - etiketter[j].x) > dx) continue;
+      var gap = etiketter[i].y - etiketter[j].y;
+      if (gap < dy) etiketter[i].y = etiketter[j].y + dy;
+      break;
+    }
+  }
+  return etiketter;
+}
+
+function svgEl(tag, attrs, kids) {
+  var el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  Object.keys(attrs || {}).forEach(function (k) {
+    if (k === "text") el.textContent = attrs[k];
+    else el.setAttribute(k, attrs[k]);
+  });
+  (kids || []).forEach(function (kid) { if (kid) el.appendChild(kid); });
+  return el;
+}
+
+function enighetVarde(s, a, b) {
+  var v = s.partienighet[a + "-" + b];
+  return v == null ? s.partienighet[b + "-" + a] : v;
+}
+
+/* Värmekarta över hela mandatperioden. Skalan går från 25 % till 100 %,
+   eftersom inget partipar ligger under det -- en skala från noll skulle
+   trycka ihop alla skillnader som faktiskt finns. */
+function enighetsHeat(s) {
+  var partier = s.partier;
+  var tabell = svgHeatTabell(partier, function (a, b) {
+    return enighetVarde(s, a, b);
+  });
+  return h("div", { class: "tabell-scroll" }, [tabell]);
+}
+
+function svgHeatTabell(partier, hamtaVarde) {
+  var tabell = h("table", { class: "data heat" });
+  var huvud = h("tr", {}, [h("th", { class: "hoek" })]);
+  partier.forEach(function (p) { huvud.appendChild(h("th", { text: p })); });
+  tabell.appendChild(h("thead", {}, [huvud]));
+
+  var tbody = h("tbody");
+  partier.forEach(function (a) {
+    var tr = h("tr", {}, [h("th", { class: "rad", text: a })]);
+    partier.forEach(function (b) {
+      if (a === b) {
+        tr.appendChild(h("td", { class: "h" }, [h("span", { text: "—" })]));
+        return;
+      }
+      var v = hamtaVarde(a, b);
+      if (v == null) {
+        tr.appendChild(h("td", { class: "h" }, [h("span", { text: "·" })]));
+        return;
+      }
+      // 0.25–1.0 mappas till 0–1 och därefter till opacitet
+      var t = Math.max(0, Math.min(1, (v - 0.25) / 0.75));
+      var cell = h("span", { text: Math.round(v * 100) + "" });
+      cell.style.background = "color-mix(in srgb, var(--accent) " +
+        Math.round(t * 82) + "%, transparent)";
+      if (t > 0.62) cell.style.color = "#fff";
+      tr.appendChild(h("td", { class: "h", title: a + "–" + b }, [cell]));
+    });
+    tbody.appendChild(tr);
+  });
+  tabell.appendChild(tbody);
+  return tabell;
+}
+
+/* Tidslinje: hur ett valt partis enighet med de sju övriga rört sig över
+   mandatperiodens fyra riksmöten. */
+function enighetsTidslinje(s) {
+  var partier = s.partier;
+  var rm = s.riksmoten.filter(function (r) { return s.enighet_per_rm[r]; });
+  var valt = "M";
+
+  var W = 720, H = 300, ML = 42, MR = 116, MT = 14, MB = 34;
+  var innerW = W - ML - MR, innerH = H - MT - MB;
+
+  var host = h("figure", { class: "diagram" });
+  var valjare = h("div", { class: "valjare" });
+
+  function xPos(i) {
+    return ML + (rm.length === 1 ? innerW / 2 : i * innerW / (rm.length - 1));
+  }
+  function yPos(v) {
+    return MT + innerH - (Math.max(0, Math.min(1, (v - 0.2) / 0.8)) * innerH);
+  }
+
+  function rita() {
+    host.innerHTML = "";
+    var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H,
+                             role: "img",
+                             "aria-label": "Enighet över tid för " + valt });
+
+    // rutnät och y-etiketter, 20-100 %
+    [0.2, 0.4, 0.6, 0.8, 1.0].forEach(function (v) {
+      var y = yPos(v);
+      svg.appendChild(svgEl("line", { class: "rutnat", x1: ML, x2: ML + innerW,
+                                      y1: y, y2: y }));
+      svg.appendChild(svgEl("text", { x: ML - 8, y: y + 4, "text-anchor": "end",
+                                      text: Math.round(v * 100) + " %" }));
+    });
+    // x-etiketter
+    rm.forEach(function (r, i) {
+      svg.appendChild(svgEl("text", { x: xPos(i), y: H - 12,
+                                      "text-anchor": "middle", text: r }));
+    });
+
+    // en linje per motpart
+    var etiketter = [];
+    partier.forEach(function (p) {
+      if (p === valt) return;
+      var pkt = rm.map(function (r, i) {
+        var v = s.enighet_per_rm[r].enighet[valt + "-" + p];
+        if (v == null) v = s.enighet_per_rm[r].enighet[p + "-" + valt];
+        return v == null ? null : [xPos(i), yPos(v), v];
+      });
+      var giltiga = pkt.filter(Boolean);
+      if (giltiga.length < 2) return;
+      svg.appendChild(svgEl("path", {
+        class: "linje",
+        stroke: PARTIFARG[p] || "#888",
+        d: giltiga.map(function (q, i) {
+          return (i ? "L" : "M") + q[0].toFixed(1) + " " + q[1].toFixed(1);
+        }).join(" ")
+      }));
+      giltiga.forEach(function (q) {
+        svg.appendChild(svgEl("circle", { cx: q[0], cy: q[1], r: 3.5,
+                                          fill: PARTIFARG[p] || "#888" }));
+      });
+      var sista = giltiga[giltiga.length - 1];
+      etiketter.push({
+        x: sista[0] + 9, y: sista[1] + 4, farg: PARTIFARG[p] || "#888",
+        text: p + " " + Math.round(sista[2] * 100) + " %"
+      });
+    });
+
+    // alla etiketter står i samma kolumn, så x-villkoret ska inte gälla
+    undvikKollision(etiketter, 15, Infinity).forEach(function (e) {
+      svg.appendChild(svgEl("text", {
+        class: "partietikett", x: e.x, y: e.y, fill: e.farg, text: e.text
+      }));
+    });
+
+    svg.appendChild(svgEl("line", { class: "axel", x1: ML, x2: ML,
+                                    y1: MT, y2: MT + innerH }));
+    host.appendChild(svg);
+    host.appendChild(h("figcaption", {
+      text: "Andel voteringar per riksmöte där " + (PARTINAMN[valt] || valt) +
+            " och det andra partiet landade på samma ståndpunkt."
+    }));
+  }
+
+  partier.forEach(function (p) {
+    var b = h("button", { type: "button", class: partiKlass(p),
+                          "aria-pressed": p === valt ? "true" : "false",
+                          text: p });
+    b.addEventListener("click", function () {
+      valt = p;
+      Array.prototype.forEach.call(valjare.children, function (el) {
+        el.setAttribute("aria-pressed", el.textContent === p ? "true" : "false");
+      });
+      rita();
+    });
+    valjare.appendChild(b);
+  });
+
+  rita();
+  return h("div", {}, [valjare, host]);
+}
+
+/* Spridningsdiagram över det politiska rummet. Punkterna är ledamöter,
+   färgade efter parti; texten är partiets mittpunkt. */
+function politisktRum(rum) {
+  var W = 720, H = 520, M = 34;
+  var pts = rum.ledamoter;
+  var xs = pts.map(function (p) { return p.x; });
+  var ys = pts.map(function (p) { return p.y; });
+  var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+  var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  var pad = 0.08;
+  x0 -= (x1 - x0) * pad; x1 += (x1 - x0) * pad;
+  y0 -= (y1 - y0) * pad; y1 += (y1 - y0) * pad;
+
+  function sx(v) { return M + (v - x0) / (x1 - x0) * (W - 2 * M); }
+  function sy(v) { return H - M - (v - y0) / (y1 - y0) * (H - 2 * M); }
+
+  var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+    "aria-label": "Ledamöterna placerade efter sitt röstmönster" });
+
+  // nollaxlar som orienteringshjälp
+  svg.appendChild(svgEl("line", { class: "rutnat", x1: sx(0), x2: sx(0),
+                                  y1: M, y2: H - M }));
+  svg.appendChild(svgEl("line", { class: "rutnat", x1: M, x2: W - M,
+                                  y1: sy(0), y2: sy(0) }));
+
+  pts.forEach(function (p) {
+    var c = svgEl("circle", {
+      class: "punkt", cx: sx(p.x).toFixed(1), cy: sy(p.y).toFixed(1), r: 4.2,
+      fill: PARTIFARG[p.parti] || "#888"
+    });
+    c.appendChild(svgEl("title", { text: p.namn + " (" + p.parti + ")" }));
+    svg.appendChild(c);
+  });
+
+  // partiernas mittpunkter, som etiketter. M, KD och L ligger tätt i
+  // regeringsklungan, så etiketterna behöver skiljas åt.
+  var grupp = {};
+  pts.forEach(function (p) { (grupp[p.parti] = grupp[p.parti] || []).push(p); });
+  var etiketter = [];
+  Object.keys(grupp).forEach(function (parti) {
+    var g = grupp[parti];
+    if (g.length < 3) return;
+    etiketter.push({
+      x: sx(median(g.map(function (p) { return p.x; }))),
+      y: sy(median(g.map(function (p) { return p.y; }))) + 4,
+      farg: PARTIFARG[parti] || "#888", text: parti
+    });
+  });
+  undvikKollision(etiketter, 16).forEach(function (e) {
+    svg.appendChild(svgEl("text", {
+      class: "partietikett", x: e.x, y: e.y, "text-anchor": "middle",
+      fill: e.farg, text: e.text
+    }));
+  });
+
+  svg.appendChild(svgEl("text", {
+    class: "axeltitel", x: W - M, y: H - 10, "text-anchor": "end",
+    text: "Dimension 1 — " + pct(rum.varians[0], 0) + " av variationen"
+  }));
+  svg.appendChild(svgEl("text", {
+    class: "axeltitel", x: 12, y: 18,
+    text: "Dimension 2 — " + pct(rum.varians[1], 0)
+  }));
+
+  var legend = h("div", { class: "legend" });
+  Object.keys(grupp).sort().forEach(function (p) {
+    var sp = h("span", { class: partiKlass(p) }, [
+      h("i"), document.createTextNode((PARTINAMN[p] || p) + " (" + grupp[p].length + ")")
+    ]);
+    legend.appendChild(sp);
+  });
+
+  return h("figure", { class: "diagram" }, [
+    svg,
+    h("figcaption", {
+      text: "Varje punkt är en ledamot, placerad efter hur hen röstat i " +
+            num(rum.antal_voteringar) + " voteringar. Axlarna är inte " +
+            "förutbestämda: de är de två riktningar där ledamöterna skiljer " +
+            "sig mest. Håll över en punkt för namn."
+    }),
+    legend
+  ]);
+}
+
+function median(xs) {
+  xs = xs.slice().sort(function (a, b) { return a - b; });
+  var n = xs.length;
+  if (!n) return 0;
+  return n % 2 ? xs[(n - 1) / 2] : (xs[n / 2 - 1] + xs[n / 2]) / 2;
+}
+
+function visaBlock() {
+  setTitel("Blockkartan");
+  var s = state.stats;
+  app.innerHTML = "<p class='loading'>Beräknar kartan …</p>";
+
+  var p = state.rum ? Promise.resolve(state.rum)
+                    : hamta("data/rum.json").then(function (r) {
+                        state.rum = r; return r;
+                      });
+
+  p.then(function (rum) {
+    app.innerHTML = "";
+    app.appendChild(h("h1", { text: "Blockkartan" }));
+    app.appendChild(h("p", {
+      class: "lede",
+      text: "Samma " + num(s.antal_voteringar) + " voteringar, sedda från " +
+            "riksdagen som helhet i stället för från en enskild ledamot: " +
+            "vilka partier som röstar ihop, hur det förändrats under " +
+            "mandatperioden, och hur riksdagen ser ut när man låter " +
+            "röstningen själv rita kartan."
+    }));
+
+    app.appendChild(h("h2", { text: "Riksdagens politiska rum" }));
+    app.appendChild(h("p", {
+      class: "hint",
+      text: "Ingen höger-vänster-skala är matad in. Metoden får bara veta hur " +
+            "varje ledamot röstat och letar de mönster som förklarar mest av " +
+            "skillnaderna. Att partierna hamnar i sammanhängande klungor är " +
+            "alltså ett resultat, inte en förutsättning."
+    }));
+    app.appendChild(politisktRum(rum));
+    app.appendChild(h("div", { class: "not" }, [
+      h("strong", { text: "Axlarna har ingen inbyggd betydelse. " }),
+      document.createTextNode(
+        "Dimension 1 skiljer i praktiken regeringsunderlaget från " +
+        "oppositionen, och dimension 2 lyfter ut V och MP från övriga. Men " +
+        "det är en tolkning i efterhand, och tecknet på en axel är " +
+        "godtyckligt. Avstånd mellan punkter är meningsfulla; riktningen " +
+        "höger eller vänster i bilden är inte det."
+      )
+    ]));
+    if (rum.uteslutna && rum.uteslutna.length) {
+      app.appendChild(h("p", {
+        class: "hint",
+        text: "Utebliven röst räknas som 0, samma värde som Avstår, vilket " +
+              "drar en ledamot som röstar sällan mot mitten. Därför krävs " +
+              "minst " + pct(rum.min_deltagande, 0) + " deltagande för att " +
+              "platsas i diagrammet. Uteslutna: " +
+              rum.uteslutna.map(function (u) {
+                return u.namn + " (" + pct(u.narvaro, 0) + ")";
+              }).join(", ") + "."
+      }));
+    }
+
+    app.appendChild(h("h2", { text: "Hur ofta röstade partierna lika?" }));
+    app.appendChild(h("p", {
+      class: "hint",
+      text: "Andel av voteringarna där två partier landade på samma " +
+            "ståndpunkt, hela mandatperioden. Måttet har en känd skevhet — " +
+            "se Om siffrorna."
+    }));
+    app.appendChild(enighetsHeat(s));
+
+    app.appendChild(h("h2", { text: "Blocken över tid" }));
+    app.appendChild(h("p", {
+      class: "hint",
+      text: "Välj ett parti för att se hur dess enighet med de övriga rört " +
+            "sig mellan riksmötena."
+    }));
+    app.appendChild(enighetsTidslinje(s));
+
+    app.appendChild(h("h2", { text: "De knappaste voteringarna" }));
+    app.appendChild(h("p", {
+      class: "hint",
+      text: num(s.antal_knappa) + " av " + num(s.antal_voteringar) +
+            " voteringar avgjordes med tio rösters marginal eller mindre. " +
+            "Här är de tjugo tätaste."
+    }));
+    var ul = h("ul", { class: "rader" });
+    s.knappa_voteringar.slice(0, 20).forEach(function (v) {
+      ul.appendChild(h("li", {}, [
+        h("span", { class: "datum", text: kortdatum(v.datum) }),
+        h("span", { class: "amne" }, [
+          document.createTextNode(v.rubrik || v.bet + " punkt " + v.punkt),
+          v.motforslag
+            ? h("div", { class: "traff-meta", text: "motförslag från " + v.motforslag })
+            : null
+        ]),
+        h("span", {
+          class: "utfall",
+          text: v.ja + "–" + v.nej + (v.avstar ? " (" + v.avstar + " avstod)" : "")
+        })
+      ]));
+    });
+    app.appendChild(ul);
+
+    app.appendChild(h("a", { class: "tillbaka", href: "#/", text: "← Till sökningen" }));
+  }).catch(function (e) {
+    app.innerHTML = "";
+    app.appendChild(h("h1", { text: "Kunde inte bygga blockkartan" }));
+    app.appendChild(h("p", { class: "tom", text: String(e.message || e) }));
+    app.appendChild(h("a", { class: "tillbaka", href: "#/", text: "← Tillbaka" }));
+  });
+}
+
 // ------------------------------------------------------------- vy: om
 
 function visaOm() {
@@ -762,6 +1128,26 @@ function visaOm() {
             "grov blockkarta, inte som ett mått på politisk närhet."
     }),
 
+    h("h2", { text: "Det politiska rummet" }),
+    h("p", {
+      text: "Kartan på Blockkartan bygger på en principalkomponentanalys. Vi " +
+            "ställer upp en matris med en rad per ledamot och en kolumn per " +
+            "votering — Ja blir +1, Nej blir −1, Avstår och utebliven röst " +
+            "blir 0 — centrerar varje votering och tar de två riktningar som " +
+            "förklarar mest av skillnaderna mellan ledamöterna. Ingen " +
+            "höger-vänster-skala matas in. Att partierna hamnar i " +
+            "sammanhängande klungor är alltså ett resultat."
+    }),
+    h("p", {
+      text: "Två saker begränsar tolkningen. Axlarnas tecken är godtyckligt: " +
+            "det är avstånden mellan punkter som betyder något, inte om en " +
+            "ledamot står till höger eller vänster i bilden. Och eftersom " +
+            "utebliven röst kodas som 0 dras en ledamot som röstar sällan mot " +
+            "mitten oavsett hur hen röstar när hen väl gör det. Därför krävs " +
+            "både lång tjänstgöring och minst 60 procents deltagande för att " +
+            "vara med, och de uteslutna namnges under diagrammet."
+    }),
+
     h("h2", { text: "Kopplingen till valsedeln" }),
     h("p", {
       text: "Kandidatlistorna kommer från Valmyndigheten och matchas mot " +
@@ -800,6 +1186,7 @@ function router() {
 
   if (delar[0] === "ledamot" && delar[1]) return visaLedamot(delar[1]);
   if (delar[0] === "kandidat" && delar[1]) return visaKandidat(decodeURIComponent(delar[1]));
+  if (delar[0] === "block") return visaBlock();
   if (delar[0] === "lamnar") return visaLamnar();
   if (delar[0] === "om") return visaOm();
   return visaStart();

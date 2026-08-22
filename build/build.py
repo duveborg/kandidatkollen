@@ -35,6 +35,7 @@ import csv
 import collections
 import glob
 import json
+import math
 import os
 import re
 import sys
@@ -524,6 +525,136 @@ def koppla_kandidatur(rec, kandidater):
     }
 
 
+def enighet(linjer, partier=None):
+    """Andel voteringar där två partier landade på samma ståndpunkt.
+
+    Returnerar {"S-M": 0.44, ...} med paren i RIKSDAGSPARTIER-ordning.
+    """
+    import itertools
+
+    partier = partier or RIKSDAGSPARTIER
+    agree = collections.Counter()
+    both = collections.Counter()
+    for l in linjer.values():
+        for a, b in itertools.combinations(partier, 2):
+            if a in l and b in l:
+                both[(a, b)] += 1
+                if l[a] == l[b]:
+                    agree[(a, b)] += 1
+    return {"%s-%s" % k: round(agree[k] / n, 4)
+            for k, n in both.items() if n >= 20}
+
+
+def build_rum(votes, ledamoter, iter_n=60):
+    """Riksdagens politiska rum, som det faller ut ur röstningen.
+
+    Vi ställer upp en matris med en rad per ledamot och en kolumn per
+    votering (Ja=+1, Nej=-1, Avstår och utebliven röst=0), centrerar varje
+    votering och tar de två starkaste principalkomponenterna. Ingen
+    förhandsdefinierad höger-vänster-axel finns med: axlarna är de riktningar
+    där ledamöterna faktiskt skiljer sig mest.
+
+    Implementerat med potensiteration i stället för numpy, eftersom bygget
+    annars skulle kräva ett beroende. Gram-matrisen G = M·Mᵀ bildas aldrig
+    explicit; vi behöver bara produkten G·v, som är M·(Mᵀ·v).
+
+    Utebliven röst kodas som 0, samma värde som Avstår. Det ger en artefakt:
+    en ledamot som röstar sällan dras mot mitten oavsett hur hen röstar när
+    hen väl gör det. Därför krävs både lång tjänstgöring och att ledamoten
+    faktiskt röstat i minst 60 procent av sina voteringar. Utan
+    deltagandekravet framstod Jimmie Åkesson (14 procent) som den största
+    avvikaren inom SD, vilket säger något om hans närvaro och ingenting om
+    hans politik.
+    """
+    VARDE = {"Ja": 1.0, "Nej": -1.0, "Avstår": 0.0}
+    MIN_DELTAGANDE = 0.6
+
+    kandidater_rum = [l for l in ledamoter if l["rostning"]["mojliga"] >= 1000]
+    behall = {l["id"] for l in kandidater_rum
+              if (l["rostning"]["narvaro"] or 0) >= MIN_DELTAGANDE}
+    uteslutna = [{"namn": l["namn"], "parti": l["parti"],
+                  "narvaro": l["rostning"]["narvaro"]}
+                 for l in kandidater_rum if l["id"] not in behall]
+    parti = {l["id"]: l["parti"] for l in ledamoter}
+    namn = {l["id"]: l["namn"] for l in ledamoter}
+
+    byvote = collections.defaultdict(dict)
+    for d in votes:
+        if d["iid"] in behall and d["rost"] in VARDE:
+            byvote[d["votering_id"]][d["iid"]] = VARDE[d["rost"]]
+
+    mps = sorted(behall)
+    n = len(mps)
+    if n < 10:
+        return None
+    idx = {m: i for i, m in enumerate(mps)}
+
+    X = []           # en rad per votering, centrerad över ledamöterna
+    for vid, d in byvote.items():
+        if len(set(d.values())) < 2:
+            continue          # alla lika: ingen information
+        col = [0.0] * n
+        for iid, val in d.items():
+            col[idx[iid]] = val
+        mu = sum(col) / n
+        X.append([c - mu for c in col])
+    if not X:
+        return None
+
+    spar = sum(c * c for col in X for c in col)   # trace(G) = total varians
+
+    def Gv(v):
+        w = [0.0] * n
+        for col in X:
+            u = 0.0
+            for c, vi in zip(col, v):
+                u += c * vi
+            if u:
+                for j, c in enumerate(col):
+                    w[j] += u * c
+        return w
+
+    def norml(v):
+        s = math.sqrt(sum(x * x for x in v)) or 1.0
+        return [x / s for x in v]
+
+    komponenter = []
+    for _ in range(2):
+        # deterministisk startvektor -- bygget ska ge samma resultat varje gång
+        v = norml([math.sin(i * 1.7 + len(komponenter)) for i in range(n)])
+        lam = 0.0
+        for _ in range(iter_n):
+            w = Gv(v)
+            for tidigare in komponenter:            # ortogonalisera bort
+                d = sum(a * b for a, b in zip(w, tidigare["v"]))
+                w = [a - d * b for a, b in zip(w, tidigare["v"])]
+            lam = math.sqrt(sum(x * x for x in w))
+            if lam == 0:
+                break
+            v = [x / lam for x in w]
+        komponenter.append({"v": v, "lam": lam})
+
+    koord = []
+    for i, m in enumerate(mps):
+        koord.append({
+            "id": m, "namn": namn.get(m, ""), "parti": parti.get(m, "-"),
+            "x": round(komponenter[0]["v"][i] * math.sqrt(komponenter[0]["lam"]), 3),
+            "y": round(komponenter[1]["v"][i] * math.sqrt(komponenter[1]["lam"]), 3),
+        })
+
+    print("  politiskt rum: %d ledamöter, %d voteringar, förklarad varians "
+          "%.0f%% + %.0f%%" % (n, len(X), 100 * komponenter[0]["lam"] / spar,
+                               100 * komponenter[1]["lam"] / spar))
+    return {
+        "ledamoter": koord,
+        "varians": [round(komponenter[0]["lam"] / spar, 4),
+                    round(komponenter[1]["lam"] / spar, 4)],
+        "antal_voteringar": len(X),
+        "min_deltagande": MIN_DELTAGANDE,
+        "uteslutna": sorted(uteslutna, key=lambda u: u["narvaro"] or 0),
+    }
+
+
 def build_index(ledamoter, kandidater):
     """Sökindex över alla som är sökbara på sajten.
 
@@ -577,22 +708,19 @@ def build_index(ledamoter, kandidater):
 
 
 def build_stats(votes, linjer, amnen, ledamoter):
-    """Aggregat för startsidan."""
-    import itertools
+    """Aggregat för startsidan och blockkartan."""
+    matris = enighet(linjer)
 
-    # partienighet
-    agree = collections.Counter()
-    both = collections.Counter()
-    for vid, l in linjer.items():
-        for a, b in itertools.combinations(RIKSDAGSPARTIER, 2):
-            if a in l and b in l:
-                both[(a, b)] += 1
-                if l[a] == l[b]:
-                    agree[(a, b)] += 1
-    matris = {}
-    for (a, b), n in both.items():
-        if n:
-            matris["%s-%s" % (a, b)] = round(agree[(a, b)] / n, 4)
+    # Samma mått per riksmöte, för att se blocken röra sig över tiden.
+    rm_av_votering = {}
+    for d in votes:
+        rm_av_votering[d["votering_id"]] = d["rm"]
+    per_rm = {}
+    for rm in RIKSMOTEN:
+        delmangd = {v: l for v, l in linjer.items()
+                    if rm_av_votering.get(v) == rm}
+        if delmangd:
+            per_rm[rm] = {"antal": len(delmangd), "enighet": enighet(delmangd)}
 
     # knappa voteringar
     tot = collections.defaultdict(collections.Counter)
@@ -669,6 +797,7 @@ def build_stats(votes, linjer, amnen, ledamoter):
         "aktivitet_median": aktivitet_median,
         "per_parti": per_parti,
         "partienighet": matris,
+        "enighet_per_rm": per_rm,
         "knappa_voteringar": knappa[:60],
         "antal_knappa": len(knappa),
         "lamnar_riksdagen": lamnar,
@@ -704,6 +833,9 @@ def main():
     print("bygger statistik:")
     stats = build_stats(votes, linjer, amnen, ledamoter)
 
+    print("beräknar politiskt rum:")
+    rum = build_rum(votes, ledamoter)
+
     def dump(name, obj):
         path = os.path.join(OUT, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -715,6 +847,9 @@ def main():
     print("  index.json  %.0f kB" % (n / 1024))
     n = dump("stats.json", stats)
     print("  stats.json  %.0f kB" % (n / 1024))
+    if rum:
+        n = dump("rum.json", rum)
+        print("  rum.json    %.0f kB" % (n / 1024))
 
     ldir = os.path.join(OUT, "ledamot")
     os.makedirs(ldir, exist_ok=True)
