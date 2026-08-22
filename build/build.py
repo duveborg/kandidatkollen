@@ -1124,13 +1124,170 @@ def build_rum(votes, ledamoter, iter_n=60):
     }
 
 
-def build_voteringar(amnen, ledamoter, stats, votes):
+def build_jamforelser(votes, ledamoter, valsedlar, amnen):
+    """Parvisa jämförelser mellan ledamöter som står på samma valsedel.
+
+    Läsarens val står mellan namn på en och samma sedel, så bara de paren
+    beräknas -- att jämföra en kandidat i Stockholm med en i Norrbotten är
+    inget beslut någon väljare fattar. 2 356 par blir kvar.
+
+    Fyndet är att röstningen nästan aldrig skiljer dem. Medianparet röstade
+    olika i 2 voteringar av omkring 2 000, en tredjedel av paren skiljer sig
+    inte i en enda, och det största avståndet mellan partikamrater på samma
+    sedel är 34 voteringar. Partidisciplinen är alltså så stark att
+    voteringshistorien i sig inte är ett urskiljande underlag för ett
+    personkryss -- vilket vyn måste säga rakt ut, inte dölja bakom två
+    staplar som råkar se olika ut.
+
+    Tre avgränsningar, alla synliga i utdatan i stället för tysta:
+
+    - Par där de två röstat under **olika partibeteckning** hoppas över. Alla
+      nio bytare gick från parti till obunden, så skillnaderna skulle mäta
+      bytet och inte personerna: ett sådant par når 464 skiljande voteringar
+      mot 34 för det mest oeniga paret inom samma beteckning. `hoppade`
+      räknar dem.
+    - Par med färre än 50 gemensamma voteringar hoppas över. En ersättare med
+      ett fåtal röster ger inget jämförbart underlag.
+    - Ingen trunkering av listan över skiljande voteringar. Den längsta har
+      34 poster, så ett tak skulle bara kunna dölja det mest intressanta
+      paret.
+
+    Voteringarna refereras med index in i en egen lista, eftersom 6 182
+    poster annars skulle bära samma 36 tecken långa id om och om igen. Rösten
+    kodas 1/2/3 = Ja/Nej/Avstår; en utebliven röst kan aldrig vara en
+    skillnad, eftersom bara voteringar där båda röstade jämförs.
+
+    Listan bär datum, rubrik och betänkande, så att den ihopfällda raden
+    säger vad voteringen handlade om. Resten av detaljerna hämtas ur
+    voteringar.json vid utfällning, precis som på profilsidan.
+    """
+    ROSTKOD = {"Ja": 1, "Nej": 2, "Avstår": 3}
+
+    per_ledamot = collections.defaultdict(dict)   # iid -> (vid, punkt) -> röst
+    partitid = collections.defaultdict(dict)      # iid -> (vid, punkt) -> parti
+    # Datum och betänkande tas ur voteringsraderna och inte ur
+    # utskottsförslagen: 24 av de refererade voteringarna saknar
+    # utskottsförslag, och utan beteckningen blir raden bara "punkt 1".
+    datum = {}
+    betnr = {}
+    for d in votes:
+        nyckel = (d["votering_id"].lower(), d["punkt"])
+        datum.setdefault(nyckel[0], d["datum"])
+        betnr.setdefault(nyckel[0], "%s:%s" % (d["rm"], d["bet"]))
+        kod = ROSTKOD.get(d["rost"])
+        if not kod:
+            continue
+        per_ledamot[d["iid"]][nyckel] = kod
+        partitid[d["iid"]][nyckel] = d["parti"]
+
+    # Ledamöterna per valsedel, och därmed vilka par som ska beräknas.
+    pid_till_id = {}
+    for l in ledamoter:
+        k = l["kandidatur_2026"]
+        if k and k["pid"] is not None:
+            pid_till_id[k["pid"]] = l["id"]
+    par = set()
+    for lista in valsedlar["listor"]:
+        ids = sorted({pid_till_id[pid] for _, _, pid in lista["kandidater"]
+                      if pid in pid_till_id})
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                par.add((a, b))
+
+    vindex = {}
+    vlista = []
+    ut = {}
+    hoppade_beteckning = hoppade_underlag = 0
+    for a, b in sorted(par):
+        ra, rb = per_ledamot.get(a, {}), per_ledamot.get(b, {})
+        gemensamma = ra.keys() & rb.keys()
+        if len(gemensamma) < 50:
+            hoppade_underlag += 1
+            continue
+        if any(partitid[a][k] != partitid[b][k] for k in gemensamma):
+            hoppade_beteckning += 1
+            continue
+        rader = []
+        for k in sorted(gemensamma):
+            if ra[k] == rb[k]:
+                continue
+            if k not in vindex:
+                amne = amnen.get(k[0]) or {}
+                vindex[k] = len(vlista)
+                vlista.append([k[0], k[1], datum.get(k[0], ""),
+                               amne.get("rubrik", ""), betnr.get(k[0], ""),
+                               amne.get("doktitel", "")])
+            rader.append([vindex[k], ra[k], rb[k]])
+        # Senaste först, som varje annan voteringslista på sajten.
+        rader.sort(key=lambda r: vlista[r[0]][2], reverse=True)
+        ut["%s-%s" % (a, b)] = {"g": len(gemensamma), "v": rader}
+
+    antal = sorted(len(p["v"]) for p in ut.values())
+    print("  %d par på samma valsedel, %d skiljande voteringar i %d unika"
+          % (len(ut), sum(antal), len(vlista)))
+    print("  median %d skillnader, störst %d, %d par utan en enda"
+          % (antal[len(antal) // 2] if antal else 0, antal[-1] if antal else 0,
+             sum(1 for n in antal if n == 0)))
+    print("  hoppade över: %d par med olika partibeteckning, %d med under 50 "
+          "gemensamma voteringar" % (hoppade_beteckning, hoppade_underlag))
+    return {
+        "voteringar": vlista,
+        "par": ut,
+        "hoppade": {"beteckning": hoppade_beteckning,
+                    "underlag": hoppade_underlag},
+        # Sammanfattningen kopieras till stats.json: profilsidan behöver
+        # medianen för att sätta ett enskilt par i sammanhang, och ska inte
+        # behöva hämta hela filen för det.
+        "sammanfattning": {
+            "par": len(ut),
+            "median_olika": antal[len(antal) // 2] if antal else 0,
+            "storst": antal[-1] if antal else 0,
+            "utan_skillnad": sum(1 for n in antal if n == 0),
+        },
+    }
+
+
+def koppla_jamforbara(ledamoter, jamforelser):
+    """Skriver in vilka kollegor varje ledamot går att jämföra med.
+
+    Ligger på ledamotsposten och inte bara i jamforelser.json, så att
+    profilsidan kan erbjuda jämförelsen utan att först hämta en fil på
+    181 kB. Antalet skillnader följer med, eftersom det är det som gör en
+    jämförelse värd att öppna -- ett par utan en enda skillnad har inget att
+    visa, och en tredjedel av paren är sådana.
+    """
+    per_id = {l["id"]: l for l in ledamoter}
+    for l in ledamoter:
+        l["jamforbara"] = []
+    for nyckel, p in jamforelser["par"].items():
+        a, b = nyckel.split("-")
+        for x, y in ((a, b), (b, a)):
+            if x in per_id and y in per_id:
+                per_id[x]["jamforbara"].append({
+                    "id": y,
+                    "namn": per_id[y]["namn"],
+                    "gemensamma": p["g"],
+                    "olika": len(p["v"]),
+                })
+    for l in ledamoter:
+        l["jamforbara"].sort(key=lambda j: (-j["olika"], j["namn"]))
+    antal = sorted(len(l["jamforbara"]) for l in ledamoter if l["jamforbara"])
+    print("  %d ledamöter har minst en jämförbar kollega, median %d stycken"
+          % (len(antal), antal[len(antal) // 2] if antal else 0))
+
+
+def build_voteringar(amnen, ledamoter, stats, votes, jamforelser=None):
     """Detaljer om varje votering som sajten hänvisar till någonstans.
 
     Läggs i en egen fil som klienten hämtar först när en läsare fäller ut
     en votering. Bara refererade voteringar tas med -- att skicka alla
     2571 vore att lasta ner varje besökare med data för sidor de aldrig
     öppnar.
+
+    Jämförelsernas 6 182 skiljande röster ligger i 384 voteringar, varav 345
+    redan är med som avvikelseexempel eller knapp votering. De 39 nya kostar
+    7 kB förslagstext, så de får plats här i stället för att jämförelsevyn
+    ska behöva en egen kopia av texterna.
     """
     vill = set()
     for l in ledamoter:
@@ -1140,6 +1297,8 @@ def build_voteringar(amnen, ledamoter, stats, votes):
     for v in stats["knappa_voteringar"]:
         if v.get("vid"):
             vill.add(v["vid"])
+    for rad in (jamforelser or {}).get("voteringar", []):
+        vill.add(rad[0])
 
     # rösträkning per votering, så utfallet kan visas i utfällt läge
     rakning = collections.defaultdict(collections.Counter)
@@ -1541,8 +1700,14 @@ def main():
     print("beräknar politiskt rum:")
     rum = build_rum(votes, ledamoter)
 
+    print("bygger jämförelser:")
+    jamforelser = build_jamforelser(votes, ledamoter, valsedlar, amnen)
+
+    koppla_jamforbara(ledamoter, jamforelser)
+    stats["jamforelser"] = jamforelser["sammanfattning"]
+
     print("bygger voteringsdetaljer:")
-    voteringar = build_voteringar(amnen, ledamoter, stats, votes)
+    voteringar = build_voteringar(amnen, ledamoter, stats, votes, jamforelser)
 
     def dump(name, obj):
         path = os.path.join(OUT, name)
@@ -1562,6 +1727,8 @@ def main():
     print("  voteringar.json  %.0f kB" % (n / 1024))
     n = dump("valsedlar.json", valsedlar)
     print("  valsedlar.json  %.0f kB" % (n / 1024))
+    n = dump("jamforelser.json", jamforelser)
+    print("  jamforelser.json  %.0f kB" % (n / 1024))
 
     ldir = os.path.join(OUT, "ledamot")
     os.makedirs(ldir, exist_ok=True)

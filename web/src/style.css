@@ -650,3 +650,82 @@ figure.diagram figcaption {
   .rader li { flex-wrap: wrap; gap: 4px 12px; }
   .rader .datum { width: auto; }
 }
+
+/* jämförelsevyn: två ledamöter sida vid sida. Tre kolumner -- mått, den ena,
+   den andra -- som faller till en kolumn per ledamot på smal skärm. */
+
+.jamfor-topp {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.jamfor-huvud {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--parti, var(--line));
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.jamfor-huvud h2 { margin: 0; font-size: 1.05rem; }
+.jamfor-huvud a { text-decoration: none; color: inherit; }
+.jamfor-huvud a:hover h2 { text-decoration: underline; }
+
+.jamfor-namn {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-left: 44%;
+  font-size: .8rem;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+dl.jamfor {
+  display: grid;
+  grid-template-columns: 44% 1fr 1fr;
+  gap: 0 12px;
+  margin: 6px 0 0;
+  font-size: .92rem;
+}
+
+dl.jamfor dt,
+dl.jamfor dd {
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+dl.jamfor dt { color: var(--ink-faint); }
+dl.jamfor dd { font-variant-numeric: tabular-nums; }
+dl.jamfor dt .traff-meta { text-transform: none; letter-spacing: 0; }
+
+.taggar-lista {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  /* Tre kolumner blir oläsligt smalt; måttet får en egen rad och de två
+     talen delar nästa. Namnraden blir klistrad, annars vet läsaren efter
+     några rader inte längre vilken kolumn som är vems. */
+  .jamfor-topp { grid-template-columns: 1fr; }
+  .jamfor-namn {
+    margin-left: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--panel);
+    padding: 6px 0;
+  }
+  dl.jamfor { grid-template-columns: 1fr 1fr; }
+  dl.jamfor dt { grid-column: 1 / -1; padding-bottom: 0; border-bottom: 0; }
+}

@@ -91,6 +91,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
 
 let current = "start";
+let compareHash = null;
 page.on("console", (msg) => {
   if (msg.type() === "error") fail(current, `konsolfel: ${msg.text()}`);
 });
@@ -235,6 +236,58 @@ if (!/^1\b/.test(first.trim())) {
 const sitting = await page.locator('.valsedel-lista a[href^="#/ledamot/"]').count();
 if (sitting === 0) fail("valsedel/lista", "ingen kandidat kopplad till en ledamot");
 
+// 4c. the comparison view, reached from a member profile
+current = "jamfor";
+{
+  // find a member that has a colleague to compare against
+  const withPeers = await page.evaluate(async () => {
+    const index = await (await fetch("data/index.json")).json();
+    const col = Object.fromEntries(index.falt.map((n, i) => [n, i]));
+    const ids = index.rader.map((r) => r[col.ledamot_id]).filter(Boolean);
+    for (const id of ids) {
+      const m = await (await fetch(`data/ledamot/${id}.json`)).json();
+      // a pair that actually differed, so the vote list is not empty
+      if (m.jamforbara?.some((j) => j.olika > 0)) {
+        const other = m.jamforbara.find((j) => j.olika > 0);
+        return { a: id, b: other.id, olika: other.olika };
+      }
+    }
+    return null;
+  });
+  if (!withPeers) {
+    fail("jamfor", "ingen ledamot har en jämförbar kollega med skillnader");
+  } else {
+    const compare = await visit("jamfor", `#/jamfor/${withPeers.a}/${withPeers.b}`);
+    if (!/eller/.test(compare)) fail("jamfor", "saknar rubriken med båda namnen");
+    // the negative finding must be stated, with the median for all pairs
+    const count = await page.locator("p.jamfor-antal").innerText();
+    if (!/medianen \d+ skillnader/.test(count)) {
+      fail("jamfor", `antalet skillnader saknar medianjämförelse: ${count.slice(0, 90)}`);
+    }
+    const rows = await page.locator("ul.rader li.fallbar").count();
+    if (rows < withPeers.olika) {
+      fail("jamfor", `${rows} voteringsrader, väntade ${withPeers.olika}`);
+    }
+    // every measure must carry the Riksdag median, not just the two numbers
+    const measures = await page.locator("dl.jamfor dt").allInnerTexts();
+    if (!measures.some((t) => /median/.test(t))) {
+      fail("jamfor", "måtten visas utan median intill");
+    }
+    // expanding a differing vote has to render the detail
+    await page.locator("ul.rader li.fallbar summary").first().click();
+    await page.waitForFunction(
+      () => !document.querySelector("li.fallbar .detalj")?.innerText.includes("Hämtar detaljer"),
+      null,
+      { timeout: 10000 },
+    );
+    const detail = await page.locator("li.fallbar .detalj").first().innerText();
+    if (!/Utfall|saknar utskottsförslag/.test(detail)) {
+      fail("jamfor", `detaljen blev tom: ${detail.slice(0, 80)}`);
+    }
+    compareHash = `#/jamfor/${withPeers.a}/${withPeers.b}`;
+  }
+}
+
 const leaving = await visit("lämnar", "#/lamnar");
 if (!leaving.includes("Lämnar riksdagen")) fail("lämnar", "saknar rubrik");
 
@@ -245,6 +298,7 @@ for (const heading of [
   "Valsedlarna",
   "Personkryssen 2022",
   "Byte av partibeteckning",
+  "Jämförelsen mellan två kandidater",
   "Källor",
 ]) {
   if (!about.includes(heading)) fail("om", `saknar avsnittet ”${heading}”`);
@@ -275,6 +329,7 @@ for (const [name, hash] of [
   ["blockkartan", "#/block"],
   ["valsedel", "#/valsedel"],
   ["valsedel/valkrets", "#/valsedel/" + encodeURIComponent("Stockholms kommun")],
+  ...(compareHash ? [["jamfor", compareHash]] : []),
   ["lämnar", "#/lamnar"],
   ["om", "#/om"],
 ]) {

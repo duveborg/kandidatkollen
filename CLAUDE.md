@@ -46,7 +46,8 @@ och versionshanteras inte — inget under `site/` redigeras för hand.
   fritt. Men inga UI-ramverk eller routerbibliotek utöver React: routern är
   30 rader i `App.jsx`, och hashadresserna (`#/ledamot/<id>`, `#/block`,
   `#/lamnar`, `#/om`, `#/kandidat/<namn>`, `#/valsedel`,
-  `#/valsedel/<valkrets>`) är publicerade och får inte ändras. Att *lägga
+  `#/valsedel/<valkrets>`, `#/jamfor/<id>/<id>`) är publicerade och får inte
+  ändras. Att *lägga
   till* ett segment går bra: `#/kandidat/<namn>/<pid>` pekar ut vilken av
   flera namnar som avses, och den gamla formen fortsätter fungera.
 - **Engelska identifierare** i `web/` och `test/` — variabler, funktioner,
@@ -89,7 +90,7 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | Aktuellt parti | Voteringsraderna ligger **inte i datumordning**. "Senaste raden vinner" gav fel parti för fem av de nio som bytte beteckning under perioden — och därmed fel partifärg, fel medianjämförelse och fel `matbar`. Läs alltid ut partiet kronologiskt ur `_partitid`. |
 | Avvikelsenämnaren | `avvikelser.andel` räknas på `av_roster` = röster där ledamotens parti **hade en linje**, inte på alla avlagda röster. För den som lämnat sitt parti är skillnaden hela den obundna perioden, där ingen avvikelse är möjlig. `mot_parti` bär partiet avvikelserna mättes mot, och är inte alltid det aktuella. |
 | 132 mot 129 | 132 ledamöter saknar kandidatur och ligger i sökindexet, men `lamnar_riksdagen` har 129: listan kräver >100 mätbara voteringar. Paulina Brandberg (70), Mats Nordberg (38) och Annie Lööf (58) faller bort. Båda talen är riktiga — förväxla dem inte. |
-| Utskottsforslag | 894 betänkanden efterfrågas, 854 ger användbart svar. `load_amnen()` hoppar över filer <200 B, och 3 refererade voteringar saknar därför utskottsförslag. Gränssnittet måste tåla det. |
+| Utskottsforslag | 894 betänkanden efterfrågas, 854 ger användbart svar. `load_amnen()` hoppar över filer <200 B, och 24 refererade voteringar saknar därför utskottsförslag: 3 bland avvikelseexemplen och de knappa voteringarna, 22 av jämförelsevyns 384, varav en är samma votering. Gränssnittet måste tåla det, och rubriken faller tillbaka på betänkandebeteckningen, som alltid står i voteringsraden. |
 
 ## Redaktionella regler som inte får brytas
 
@@ -128,6 +129,14 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
 - **Personkryssen 2022 är ingen prognos.** Listor, valkretsar och partiernas
   storlek ändras mellan valen. Spärren för 2022 får stå som storleksordning för
   hur många kryss som brukar krävas, aldrig som vad som krävs i år.
+- **Röstningen skiljer inte två partikamrater — säg det.** Bland de 2 356 par
+  som står på samma valsedel röstade medianparet olika i **2 voteringar av
+  omkring 2 000**, en tredjedel av paren i ingen enda, och det största
+  avståndet inom samma beteckning är 34. En jämförelsevy som bara visar två
+  staplar antyder en skillnad som inte finns; antalet skiljande voteringar ska
+  stå med medianen för alla par intill. Måtten intill varandra läses mot
+  medianen, aldrig mot varandra — kvittningsfällan gäller även här, och två
+  röstandelar sida vid sida är en tvåmannatopplista.
 - **Skriv procentenheter, inte procent**, för skillnader mot medianen.
 - **Varje förbehåll i koden ska också stå på `#/om`**, formulerat för en
   läsare. Lägger du till ett mått, lägg till dess begränsning där.
@@ -154,13 +163,14 @@ web/src/lib/         format, constants, data (fetch + context + useFetch),
 web/src/components/  Stat, Note, HitRow, CandidateBadge, Vote, CandidacyCard,
                      PersonalVoteCard, ActivitySection,
                      charts/{HeatTable, Timeline, PoliticalSpace, labels}
-web/src/views/       Home, Member, Candidate, Ballot, Leaving, BlockMap, About
+web/src/views/       Home, Member, Candidate, Compare, Ballot, Leaving,
+                     BlockMap, About
 web/src/style.css    ljust/mörkt via prefers-color-scheme, --parti per parti
 test/smoke.mjs       Playwright-rökprov över alla vyer
 site/                enbart byggd output
 site/data/           index.json + stats.json laddas direkt; rum.json vid
-                     #/block; valsedlar.json vid #/valsedel; voteringar.json
-                     vid utfällning
+                     #/block; valsedlar.json vid #/valsedel; jamforelser.json
+                     vid #/jamfor; voteringar.json vid utfällning
 ```
 
 `index.json` skickas packat (`falt` + positionsrader) och packas upp till
@@ -205,6 +215,7 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | aktivitetsposter | 113 190 |
 | valsedlar | 285 i 29 valkretsar, 10 521 kandidatplatser, 95 ogiltiga |
 | partibytare | 9, samtliga från parti till politiskt obunden |
+| jämförbara par | 2 356 på samma valsedel, median 2 skiljande voteringar, störst 34, 766 par utan en enda; 85 par hoppas över för olika partibeteckning, 140 för under 50 gemensamma voteringar |
 | personvalet 2022 | 67 av 349 personvalda, 166 över spärren, 13 684 kandidater med kryss |
 | personval per ledamot | 424 av 426 matchade, varav 59 personvalda (de 8 som fattas är statsråd och talman, som inte finns i voteringsdatan) |
 | knappa voteringar | median 89 % deltagande bland 364 heltidsledamöter |

@@ -249,6 +249,19 @@ ledamöter som inte kandiderar igen. Utan de
 senare går en avgående ledamot inte att söka upp, fastän sidan *Lämnar
 riksdagen* länkar till hen.
 
+**Röstningen skiljer nästan aldrig två kandidater på samma valsedel.** Det är
+resultatet av att jämföra alla 2 356 par som står på samma sedel: medianparet
+röstade olika i 2 voteringar av omkring 2 000, 766 par skiljer sig inte i en
+enda, och det största avståndet mellan två partikamrater på samma sedel är 34
+voteringar. Partigruppen bestämmer sin linje före voteringen och nästan alla
+följer den, så voteringshistoriken säger mycket om ett parti och lite om valet
+mellan två av dess kandidater. Jämförelsevyn skriver ut det i stället för att
+låta två staplar antyda en skillnad som inte finns, och måtten intill varandra
+ska läsas mot riksdagens median — inte mot varandra. Par som röstat under olika
+partibeteckning är inte med (85 par, där skillnaderna skulle mäta bytet och
+inte personerna), och inte heller par med under 50 gemensamma voteringar (140
+par).
+
 Sajten täcker bara riksdagen — inte kommun- och regionpolitik, och inte
 utskottsarbete, förhandlingar eller motionsskrivande, som ofta utgör
 huvuddelen av en ledamots påverkan.
@@ -272,15 +285,18 @@ site/              byggd output, enbart statiska filer
   assets/          skrivs av Vite
   data/            skrivs av build.py — index.json, stats.json, rum.json,
                    valsedlar.json (hämtas vid #/valsedel),
+                   jamforelser.json (hämtas vid #/jamfor),
                    voteringar.json (hämtas vid utfällning),
                    ledamot/<id>.json
 ```
 
-Sajten har fem huvudvyer: sökningen med ledamotsprofiler, **Din valsedel** (de
-fastställda listorna per valkrets), **Blockkartan** (det politiska rummet,
-enighetsmatrisen, blockens rörelse per riksmöte och de knappaste voteringarna),
-**Lämnar riksdagen** och **Om siffrorna**. `rum.json` laddas först när
-Blockkartan öppnas, `valsedlar.json` först vid Din valsedel.
+Sajten har sex huvudvyer: sökningen med ledamotsprofiler, **Din valsedel** (de
+fastställda listorna per valkrets), **jämförelsen** mellan två kandidater på
+samma sedel, **Blockkartan** (det politiska rummet, enighetsmatrisen, blockens
+rörelse per riksmöte och de knappaste voteringarna), **Lämnar riksdagen** och
+**Om siffrorna**. `rum.json` laddas först när Blockkartan öppnas,
+`valsedlar.json` först vid Din valsedel och `jamforelser.json` först vid en
+jämförelse.
 
 `data/` och hela `site/` är genererade och versionshanteras inte. Inget under
 `site/` redigeras för hand.

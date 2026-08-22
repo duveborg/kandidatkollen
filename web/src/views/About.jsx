@@ -228,6 +228,31 @@ export function About() {
             "läsas ut kronologiskt."}
         </p>
 
+        <h2>Jämförelsen mellan två kandidater</h2>
+        <p>
+          {"Två kandidater på samma valsedel går att ställa sida vid sida. Fyndet är att " +
+            "röstningen nästan aldrig skiljer dem: bland de 2 356 par som står på samma " +
+            "sedel röstade medianparet olika i 2 voteringar av omkring 2 000, och 766 par " +
+            "skiljer sig inte i en enda. Det största avståndet mellan två partikamrater på " +
+            "samma sedel är 34 voteringar. Partigruppen bestämmer sin linje före voteringen " +
+            "och nästan alla följer den, så voteringshistoriken säger mycket om ett parti " +
+            "och lite om valet mellan två av dess kandidater. Sajten skriver ut det i " +
+            "stället för att låta två staplar se olika ut."}
+        </p>
+        <p>
+          {"Två avgränsningar. Par där de två röstat under olika partibeteckning är inte " +
+            "med — 85 par — eftersom skillnaderna då mäter bytet och inte personerna: ett " +
+            "sådant par når 464 skiljande voteringar. Par med under 50 gemensamma " +
+            "voteringar är inte heller med, 140 par, för en ersättare med ett fåtal röster " +
+            "ger inget jämförbart underlag. Listan över skiljande voteringar kapas aldrig."}
+        </p>
+        <p>
+          {"Måtten intill varandra ska läsas mot medianen och inte mot varandra. Det gäller " +
+            "särskilt röstandelen: kvittningssystemet gör att ledamöter med tunga uppdrag " +
+            "röstar i färre voteringar utan att vara frånvarande från arbetet, så två tal " +
+            "sida vid sida är ingen rangordning."}
+        </p>
+
         <h2>Kopplingen till valsedeln</h2>
         <p>
           {"Kandidatlistorna kommer från Valmyndigheten och matchas mot riksdagens ledamöter " +

@@ -48,6 +48,47 @@ function CloseVotes({ member, stats }) {
   );
 }
 
+/* Everyone on the same ballot as this member, so the reader can put two names
+   from their own list side by side. Ordered by how often the two voted
+   differently, because that is what makes a comparison worth opening — a
+   third of the pairs never differed once, and saying so up front is more use
+   than letting the reader discover it one click at a time. */
+function Comparisons({ member }) {
+  const others = member.jamforbara;
+  if (!others?.length) return null;
+
+  const firstName = member.namn.split(" ")[0];
+  const withDiff = others.filter((other) => other.olika > 0).length;
+
+  return (
+    <>
+      <h2>Jämför med någon annan på samma valsedel</h2>
+      <p className="hint">
+        {`${firstName} står på valsedel med ${formatNumber(others.length)} andra ledamöter. ` +
+          (withDiff === 0
+            ? "Ingen av dem har röstat annorlunda än hen i en enda votering."
+            : `Med ${formatNumber(withDiff)} av dem finns minst en votering där de röstade ` +
+              "olika. Listan är sorterad efter antalet sådana voteringar.")}
+      </p>
+      <ul className="rader">
+        {others.map((other) => (
+          <li key={other.id}>
+            <a href={`#/jamfor/${member.id}/${other.id}`}>
+              <span className="amne">{other.namn}</span>
+              <span className="utfall">
+                {other.olika === 0
+                  ? `ingen skillnad på ${formatNumber(other.gemensamma)} voteringar`
+                  : `${formatNumber(other.olika)} av ${formatNumber(other.gemensamma)} ` +
+                    "voteringar olika"}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 /* The bar puts the member's vote share next to the Riksdag median, because
    the number on its own invites being read as truancy. */
 function AgainstMedian({ member, share, medianShare }) {
@@ -255,6 +296,8 @@ export function Member({ id }) {
       <Deviations member={member} stats={stats} />
 
       {member.aktivitet ? <ActivitySection member={member} stats={stats} /> : null}
+
+      <Comparisons member={member} />
 
       {member.utskott?.length ? (
         <>

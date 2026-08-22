@@ -81,6 +81,20 @@ export function loadBallots() {
   return ballotsPromise;
 }
 
+/* jamforelser.json is only needed when a reader opens a comparison. It holds
+   every pair on a shared ballot, so it is fetched once and reused. */
+let comparisonsPromise = null;
+
+export function loadComparisons() {
+  if (!comparisonsPromise) {
+    comparisonsPromise = fetchJson("data/jamforelser.json").catch((err) => {
+      comparisonsPromise = null;
+      throw err;
+    });
+  }
+  return comparisonsPromise;
+}
+
 /* rum.json is only needed for the block map. */
 let spacePromise = null;
 

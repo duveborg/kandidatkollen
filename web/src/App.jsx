@@ -4,6 +4,7 @@ import { About } from "./views/About.jsx";
 import { Ballot } from "./views/Ballot.jsx";
 import { BlockMap } from "./views/BlockMap.jsx";
 import { Candidate } from "./views/Candidate.jsx";
+import { Compare } from "./views/Compare.jsx";
 import { Home } from "./views/Home.jsx";
 import { Leaving } from "./views/Leaving.jsx";
 import { Member } from "./views/Member.jsx";
@@ -11,9 +12,9 @@ import { Member } from "./views/Member.jsx";
 /* Hash routing, carried over unchanged from the pre-React site: these URLs are
    shareable and already published, so they must keep working.
      #/ledamot/<id>  #/kandidat/<namn>  #/block  #/lamnar  #/om
-   #/valsedel and #/valsedel/<valkrets> were added later, as was the optional
-   person id on #/kandidat/<namn>/<pid>. Adding segments is safe; changing the
-   existing ones is not. */
+   #/valsedel, #/valsedel/<valkrets> and #/jamfor/<id>/<id> were added later,
+   as was the optional person id on #/kandidat/<namn>/<pid>. Adding routes and
+   segments is safe; changing the existing ones is not. */
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash);
 
@@ -35,6 +36,9 @@ function routeTo(hash) {
     return (
       <Candidate name={decodeURIComponent(parts[1])} pid={parts[2] ?? null} />
     );
+  }
+  if (parts[0] === "jamfor" && parts[1] && parts[2]) {
+    return <Compare a={parts[1]} b={parts[2]} />;
   }
   if (parts[0] === "valsedel") {
     return <Ballot constituency={parts[1] ? decodeURIComponent(parts[1]) : null} />;
