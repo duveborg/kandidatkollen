@@ -304,6 +304,10 @@ current = "dinplats";
 {
   const intro = await visit("dinplats", "#/dinplats");
   if (!/Var står du/.test(intro)) fail("dinplats", "saknar rubrik");
+  // same pattern as build.py's QUIZ_PARTINAMN: "moderat" and "liberal" are
+  // ordinary Swedish adjectives, so those two are caught in definite form only
+  const PARTY_NAME =
+    /(socialdemokrat|sverigedemokrat|kristdemokrat|centerpartist|vänsterpartist|miljöpartist|moderaterna|liberalerna|centerpartiet|vänsterpartiet|miljöpartiet)/i;
   const file = JSON.parse(fs.readFileSync(path.join(SITE, "data", "quiz.json"), "utf8"));
   const sets = file.varianter;
   if (!sets?.length) fail("dinplats", "inga uppsättningar i quiz.json");
@@ -331,6 +335,15 @@ current = "dinplats";
     // no question may be a bare reference back to something unseen
     for (const q of set.fragor) {
       if (q.fraga.length < 40) fail("dinplats", `för kort fråga: ${q.fraga}`);
+      // the fold links to the source, which needs the document id
+      if (!q.dok_id) fail("dinplats", `${q.rm}:${q.bet} punkt ${q.punkt} saknar dok_id`);
+      // knowing who wrote the reservation turns the test into party recognition,
+      // so neither the question nor its background may name a party
+      for (const text of [q.fraga, ...(q.bakgrund ?? [])]) {
+        if (PARTY_NAME.test(text)) {
+          fail("dinplats", `frågan namnger ett parti: ${text.slice(0, 70)}`);
+        }
+      }
       if (/^(Detta|Det|Dessa|Vad som)\b/.test(q.fraga)) {
         fail("dinplats", `frågan syftar bakåt: ${q.fraga.slice(0, 60)}`);
       }
@@ -347,6 +360,20 @@ current = "dinplats";
     }
   }
   const quiz = sets[0];
+
+  // the fold has to carry the source out to riksdagen.se, in a new tab
+  await page.locator(".fraga details.mer > summary").click();
+  const sourceLink = page.locator(".fraga details.mer .lankar a").first();
+  const href = await sourceLink.getAttribute("href");
+  if (!/^https:\/\/www\.riksdagen\.se\//.test(href ?? "")) {
+    fail("dinplats", `källänken pekar fel: ${href}`);
+  }
+  if ((await sourceLink.getAttribute("target")) !== "_blank") {
+    fail("dinplats", "källänken öppnas inte i en ny flik");
+  }
+  // and the fold must not be what reveals the reservation's parties
+  const card = await page.locator(".kort.fraga").innerText();
+  if (PARTY_NAME.test(card)) fail("dinplats", `frågekortet namnger ett parti: ${card.slice(0, 80)}`);
 
   // answer them all, alternating so the reader does not land on a party line
   for (let i = 0; i < quiz.fragor.length; i += 1) {
@@ -408,7 +435,8 @@ current = "dinplats";
     current = "dinplats/annan uppsättning";
     const other = await visit("dinplats/annan uppsättning", "#/dinplats/1");
     if (!/Var står du/.test(other)) fail("dinplats/annan uppsättning", "saknar rubrik");
-    const asked = await page.locator(".fraga .forslag").innerText();
+    // > .forslag: the fold quotes the reservation in the same class
+    const asked = await page.locator(".fraga > .forslag").innerText();
     if (!sets[1].fragor.some((q) => q.fraga.startsWith(asked.slice(0, 40)))) {
       fail("dinplats/annan uppsättning", `frågan är inte ur uppsättning 1: ${asked.slice(0, 60)}`);
     }

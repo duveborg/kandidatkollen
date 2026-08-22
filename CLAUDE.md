@@ -7,8 +7,10 @@ ledamöter faktiskt röstade 2022–2026. Metoden och dess brister står i
 ## Arbetssätt
 
 Hobbyprojekt med en utvecklare. **Arbeta direkt på `main`** — inga
-featuregrenar, ingen pull request. Committa gärna, men **pusha inte**: det
-sköter jag själv. Det gäller även när ändringen är stor eller rör flera filer.
+featuregrenar, ingen pull request. **Committa inte, och pusha inte**: lämna
+ändringarna i arbetskatalogen så läser jag igenom dem och committar själv. Jag
+vill se vad som skapats först. Det gäller även när ändringen är stor, rör många
+filer eller är färdigverifierad.
 
 En push till `main` publicerar sajten: `.github/workflows/publicera.yml` kör
 `fetch.py`, `build.py`, `npm run bygg` och rökprovet, och tvingar upp `site/`
@@ -195,6 +197,12 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
   serien i stället för att lägga till en uppsättning som placerar läsaren på
   måfå. Vyn skriver ut siffran för läsarens egna frågor, `#/om` den lägsta av
   alla.
+- **Frågekortet får inte avslöja vem som skrev reservationen.** Partierna står
+  i resultatet, inte i testet: syns de i förväg mäter frågan partisympati i
+  stället för sakåsikt. Därför sållar `bakgrundsmeningar()` bort meningar som
+  namnger ett parti, och rökprovet prövar både frågetexten och bakgrunden mot
+  samma mönster. Källänkarna leder till sidor som visar både partier och
+  utfall — det är läsarens eget val och priset för att visa källan alls.
 - **Quizet får inte bli en ensidig lista.** Reservationer skrivs av dem som
   förlorade i utskottet, och utskottsmajoriteten är regeringspartierna med
   SD: 239 av 295 dugliga frågor kommer från vänster- och mittenoppositionen.
@@ -298,6 +306,7 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | knappa voteringar | median 89 % deltagande bland 364 heltidsledamöter |
 | quizet | 8 uppsättningar om 15 frågor ur 280 dugliga, utan en enda gemensam fråga, 5 från regeringssidan eller SD i var och en, 411–414 ledamöter med svar |
 | quizets trohet | 0,98 / 0,92 i första uppsättningen, 0,96–0,98 / 0,80–0,92 över alla åtta, mot ledamöternas riktiga plats i rum.json |
+| bakgrund per fråga | 97 av 120 får två meningar, 5 en, 18 ingen; median 250 tecken. Noll frågor och noll bakgrunder namnger ett parti |
 | quizets tak | serien tar slut vid åtta av sig själv: ett nionde varv får ihop 12 frågor, inte 15. `ANTAL_VARIANTER` är ett skydd mot rundgång, inte ett mål |
 | oskiljbara partier | M och L, i varenda votering i perioden. I uppsättning 3–8 följer KD med dem: frågorna som skiljer KD från M och L tar slut först |
 

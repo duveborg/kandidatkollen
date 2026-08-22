@@ -156,6 +156,17 @@ export function About() {
             "fulltext. Att hålla med reservationen motsvarar därför ett nej i kammaren."}
         </p>
         <p>
+          {"Under varje fråga finns de meningar reservationen själv sätter före sitt krav, " +
+            "och länkar till betänkandet och till voteringens rådata hos riksdagen. " +
+            "Bakgrunden är reservantens egna ord, inte en neutral beskrivning — det är " +
+            "den ena sidans argument, återgivna ordagrant. Meningar som namnger ett parti " +
+            "plockas bort: vilka partier som står bakom reservationen visas först i " +
+            "resultatet, eftersom ett test där partiet syns i förväg mäter partisympati " +
+            "och inte vad läsaren tycker i sakfrågan. 97 av frågorna får två meningar, " +
+            "fem får en och 18 ingen alls — reservationen är då så kort att kravet är " +
+            "hela ställningstagandet."}
+        </p>
+        <p>
           {`Frågorna väljs av bygget, inte för hand. Av periodens voteringar återstår ` +
             `${stats.quiz ? formatNumber(stats.quiz.av_voteringar) : "omkring 2 500"} med ` +
             "känt utskottsförslag, och av dem behåller urvalet de som delar kammaren på " +

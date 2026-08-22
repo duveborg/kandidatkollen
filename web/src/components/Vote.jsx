@@ -1,11 +1,6 @@
 import { Fragment, useState } from "react";
 import { loadVotes } from "../lib/data.js";
-import { formatNumber, shortDate } from "../lib/format.js";
-
-/* _{dok_id} redirects to the document's real address with its slug. */
-function riksdagUrl(docId) {
-  return `https://www.riksdagen.se/sv/dokument-och-lagar/dokument/_${docId}`;
-}
+import { formatNumber, riksdagUrl, shortDate } from "../lib/format.js";
 
 /* The `spec` a caller passes in:
      voteId     votering_id, the key into voteringar.json

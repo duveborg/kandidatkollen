@@ -1,6 +1,13 @@
 import { useMemo, useState } from "react";
 import { loadPoliticalSpace, loadQuiz, useData, useFetch } from "../lib/data.js";
-import { formatNumber, median, partyClass, percent, shortConstituency } from "../lib/format.js";
+import {
+  formatNumber,
+  median,
+  partyClass,
+  percent,
+  riksdagUrl,
+  shortConstituency,
+} from "../lib/format.js";
 import { partyName } from "../lib/constants.js";
 import { useTitle } from "../lib/useTitle.js";
 import { Note } from "../components/Note.jsx";
@@ -106,6 +113,47 @@ function placeReader(quiz, answers) {
   return { x: x * quiz.skala[0], y: y * quiz.skala[1] };
 }
 
+/* Links to the source, and the sentences the reservation itself puts before
+   its demand. One sentence is thin ground for an opinion, and the reader who
+   wants more should not have to search riksdagen.se by hand.
+
+   What the fold must not give away is who wrote the reservation: knowing that
+   turns the test into party recognition, which is the one thing it is built
+   to avoid. build.py drops any background sentence that names a party, and
+   the smoke test holds every question to it. The links do lead to pages that
+   show both the parties and the outcome — that is the reader's own choice to
+   make, and the price of showing the source at all. */
+function More({ question }) {
+  return (
+    <details className="mer">
+      <summary>Mer om förslaget</summary>
+      <div className="detalj">
+        {question.bakgrund?.length ? (
+          <>
+            <p className="kalla">Reservationens egna ord före kravet:</p>
+            <p className="forslag">{question.bakgrund.join(" ")}</p>
+          </>
+        ) : null}
+        {question.doktitel ? <p className="kalla">{`Ärende: ${question.doktitel}`}</p> : null}
+        <p className="lankar">
+          {question.dok_id ? (
+            <a href={riksdagUrl(question.dok_id)} target="_blank" rel="noopener">
+              {`Öppna ${question.rm}:${question.bet} på riksdagen.se →`}
+            </a>
+          ) : null}
+          <a
+            href={`https://data.riksdagen.se/votering/${question.id}`}
+            target="_blank"
+            rel="noopener"
+          >
+            Rådata för voteringen →
+          </a>
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function Question({ question, number, total, onAnswer }) {
   return (
     <div className="kort fraga">
@@ -115,6 +163,7 @@ function Question({ question, number, total, onAnswer }) {
         {`Ur reservationen till ${question.organnamn}s betänkande ${question.rm}:${question.bet}, ` +
           `punkten ”${question.amne}”. Riksdagen röstade om den ${question.datum}.`}
       </p>
+      <More question={question} />
       <div className="svarsknappar">
         <button type="button" onClick={() => onAnswer(AGREE)}>
           Håller med
@@ -276,9 +325,7 @@ function Result({ quiz, space, answers, rows, stats }) {
 
       {quiz.oskiljbara?.length ? (
         <Note heading="Vissa partier går inte att skilja åt. ">
-          {quiz.oskiljbara
-            .map((group) => group.map(partyName).join(" och "))
-            .join("; ") +
+          {quiz.oskiljbara.map((group) => group.map(partyName).join(" och ")).join("; ") +
             " röstade likadant i varenda en av de här voteringarna — och i praktiken i hela " +
             "mandatperioden. Att du hamnar närmare det ena än det andra beror på vilka av " +
             "deras ledamöter som var på plats, inte på politik."}
@@ -300,7 +347,12 @@ function Result({ quiz, space, answers, rows, stats }) {
                 <div>{question.fraga}</div>
                 <div className="traff-meta">
                   {`Reservation av ${question.forslagsstallare.map(partyName).join(", ")} · ` +
-                    `partilinjer: ${lines}`}
+                    `partilinjer: ${lines} · `}
+                  {question.dok_id ? (
+                    <a href={riksdagUrl(question.dok_id)} target="_blank" rel="noopener">
+                      {`${question.rm}:${question.bet} →`}
+                    </a>
+                  ) : null}
                 </div>
               </span>
               <span className="utfall">

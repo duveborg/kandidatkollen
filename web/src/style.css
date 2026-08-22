@@ -753,6 +753,28 @@ dl.jamfor dt .traff-meta { text-transform: none; letter-spacing: 0; }
   max-width: 60ch;
 }
 
+/* "Mer om förslaget": samma utfällning som voteringsraderna, men i ett kort
+   utan datumkolumn att linjera .detalj mot. */
+.fraga details.mer { margin: 12px 0 0; }
+
+.fraga details.mer > summary {
+  display: inline-block;
+  cursor: pointer;
+  list-style: none;
+  font-size: .84rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: var(--accent);
+}
+
+.fraga details.mer > summary::-webkit-details-marker { display: none; }
+.fraga details.mer > summary::after { content: " +"; color: var(--ink-faint); }
+.fraga details.mer[open] > summary::after { content: " –"; }
+.fraga details.mer > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fraga details.mer .detalj { padding: 10px 0 0; }
+.fraga details.mer .forslag { font-size: .9rem; line-height: 1.55; }
+/* inline-block, annars bryts pilen loss från sin länk på smal skärm */
+.fraga details.mer .lankar a { display: inline-block; margin: 0 16px 4px 0; }
+
 .svarsknappar {
   display: flex;
   flex-wrap: wrap;

@@ -82,3 +82,9 @@ export function median(values) {
   if (!n) return 0;
   return n % 2 ? xs[(n - 1) / 2] : (xs[n / 2 - 1] + xs[n / 2]) / 2;
 }
+
+/* _{dok_id} redirects to the document's real address with its slug, so the
+   link survives without knowing the slug. */
+export function riksdagUrl(docId) {
+  return `https://www.riksdagen.se/sv/dokument-och-lagar/dokument/_${docId}`;
+}

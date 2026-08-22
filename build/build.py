@@ -1484,6 +1484,48 @@ def kravmening(text):
     return ""
 
 
+# Frågan är en enda mening, och en läsare som inte följt ärendet har ingen
+# aning om vad den handlar om. Ställningstagandet börjar med bakgrunden och
+# slutar med yrkandet -- samma iakttagelse som kravmening() bygger på -- så
+# kontexten hämtas framifrån. Meningar som namnger ett parti sållas bort:
+# vem som skrev reservationen visas först i resultatet, annars blir testet en
+# övning i att känna igen partier i stället för att ta ställning till sak.
+# "moderat prishöjning" och "en liberal ordning" är vanlig svenska, så de två
+# partierna fångas bara i bestämd form. Övriga stammar är entydiga.
+QUIZ_PARTINAMN = re.compile(
+    r"\b(socialdemokrat|sverigedemokrat|kristdemokrat|centerpartist"
+    r"|vänsterpartist|miljöpartist|moderaterna|liberalerna|centerpartiet"
+    r"|vänsterpartiet|miljöpartiet)", re.I)
+QUIZ_BAKGRUND = 2        # meningar
+QUIZ_BAKGRUND_TAK = 320  # tecken per mening; längre är inget en läsare orkar
+
+
+def bakgrundsmeningar(text, krav):
+    """De första självbärande meningarna före kravet, som kontext till frågan.
+
+    97 av 120 frågor får två meningar, 5 får en och 18 ingen -- reservationen
+    är då så kort att kravet är hela ställningstagandet, och frågan får stå
+    utan bakgrund hellre än med reservantens partinamn i.
+    """
+    meningar_ = meningar(text)
+    slut = len(meningar_)
+    for i, m in enumerate(meningar_):
+        if krav[:50] in re.sub(r"\s*\d+\.\s*$", "", m).strip():
+            slut = i
+            break
+    ut = []
+    for m in meningar_[:slut]:
+        m = m.strip()
+        if not 30 <= len(m) <= QUIZ_BAKGRUND_TAK:
+            continue
+        if QUIZ_PARTINAMN.search(m) or QUIZ_FLOSKEL.search(m):
+            continue
+        ut.append(m)
+        if len(ut) == QUIZ_BAKGRUND:
+            break
+    return ut
+
+
 def quizfalt(text):
     for namn, monster in QUIZ_FALT:
         if re.search(r"\b(%s)" % monster, text, re.I):
@@ -1599,6 +1641,7 @@ def build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas):
             continue
         kandidater[vid] = {
             "krav": krav, "amne": res["rubrik"], "falt": falt, "partier": partier,
+            "bakgrund": bakgrundsmeningar(res["text"], krav),
             "linjer": {p: l.get(p, "") for p in RIKSDAGSPARTIER}, "utfall": dict(c),
         }
     print("  %d voteringar duger som fråga" % len(kandidater))
@@ -1749,9 +1792,11 @@ def build_quiz(votes, amnen, linjer, ledamoter, knappa, reservationer, rumbas):
             k, a = kandidater[vid], amnen[vid]
             fragor.append({
                 "id": vid, "fraga": k["krav"], "amne": k["amne"], "falt": k["falt"],
+                "bakgrund": k["bakgrund"],
                 "doktitel": a.get("doktitel", ""), "organ": a.get("organ", ""),
                 "organnamn": UTSKOTT_NAMN.get(a.get("organ", ""), a.get("organ", "")),
                 "bet": a.get("bet", ""), "rm": a.get("rm", ""), "punkt": a.get("punkt", ""),
+                "dok_id": a.get("dok_id", ""),
                 "datum": datum.get(vid, ""),
                 "forslagsstallare": list(k["partier"]),
                 "linjer": k["linjer"], "utfall": k["utfall"],

@@ -110,7 +110,11 @@ Krigsdelegationen och låter läsaren tolka.
 text duger inte att svara ja eller nej på — nio av tio lyder ”Riksdagen avslår
 motionerna” följt av en radda motionsnummer. Kravet står i reservationen, i
 betänkandets fulltext, och att hålla med den motsvarar därför ett nej i
-kammaren. Bygget väljer frågorna självt: först de som skiljer partilinjerna
+kammaren. Under varje fråga finns de meningar reservationen själv sätter före
+sitt krav, plus länkar till betänkandet och voteringens rådata — bakgrunden är
+alltså den ena sidans egna ord, och meningar som namnger ett parti plockas
+bort, eftersom ett test där partiet syns i förväg mäter partisympati i stället
+för sakåsikt. Bygget väljer frågorna självt: först de som skiljer partilinjerna
 åt, sedan två som bär den andra dimensionen i det politiska rummet, sedan den
 mest omstridda frågan inom vart och ett av ett dussin ämnesområden. Hela
 urvalet körs om åtta gånger, där varje omgång utesluter det tidigare omgångar
