@@ -10,6 +10,11 @@ gå igenom de fastställda valsedlarna lista för lista, med varje kandidats
 gärning i riksdagen intill namnet — och med hur många personkryss som faktiskt
 krävdes i din valkrets 2022.
 
+Vet du inte vad du tycker om kandidaterna kan du gå åt tredje hållet: ta
+ställning till femton skarpa voteringar ur mandatperioden, formulerade som de
+partier som förlorade dem skrev dem, och se vilka ledamöter som röstade som du
+— och vilka av dem som står på en valsedel där du bor.
+
 Valkompasser mäter vad partier *säger*. Den här sajten mäter vad ledamöter
 *gjorde*, och är därför användbar för det beslut väljaren har svårast att fatta:
 personkryssen.
@@ -51,6 +56,7 @@ alltid om. Kör om båda stegen för att uppdatera sajten.
 | ” | `person.csv` — ledamöter, utskott, ledigheter, statsråds- och partiuppdrag | löpande |
 | ” | `sagtochgjort.csv` — anföranden, motioner, frågor, interpellationer | löpande |
 | ” | `/utskottsforslag/{dok_id}` — vad varje voteringspunkt handlade om | per betänkande |
+| ” | `/dokument/{dok_id}` — betänkandets fulltext, för reservationernas ställningstaganden | per betänkande |
 | ” | `/personlista/` — mappning person-GUID ↔ intressent\_id | löpande |
 | [data.val.se](https://www.val.se/valresultat-och-statistik/statistik-och-data/radata-val-2026) | `kandidaturer.csv` — alla kandidater i valet 2026 | varje timme |
 | [resultat.val.se](https://resultat.val.se/val2022) | slutresultatet i riksdagsvalet 2022, en fil per valkrets — personröster per kandidat | fast |
@@ -89,6 +95,24 @@ Rollen går bara delvis att läsa ur datan. `partiuppdrag` saknar systematiskt
 partiledare för S, M, SD, V och KD, så sajten hittar inte på etiketten — den
 visar i stället verifierbara fakta som medlemskap i Utrikesnämnden och
 Krigsdelegationen och låter läsaren tolka.
+
+**Frågorna i ”Var står du?” är reservationernas egna krav.** Utskottsförslagets
+text duger inte att svara ja eller nej på — nio av tio lyder ”Riksdagen avslår
+motionerna” följt av en radda motionsnummer. Kravet står i reservationen, i
+betänkandets fulltext, och att hålla med den motsvarar därför ett nej i
+kammaren. Bygget väljer frågorna självt: först de som skiljer partilinjerna
+åt, sedan två som bär den andra dimensionen i det politiska rummet, sedan den
+mest omstridda frågan inom vart och ett av ett dussin ämnesområden.
+
+Fyra saker begränsar svaret. Reservationer skrivs av dem som förlorade i
+utskottet, och utskottsmajoriteten har hela perioden varit regeringspartierna
+med SD — 239 av 295 dugliga frågor kommer därför från vänster- och
+mittenoppositionen, och urvalet kräver att minst fem kommer från andra hållet.
+En ledamot som inte röstade räknas varken för eller mot, eftersom frånvaro
+oftast är en kvittning; nämnaren står utskriven vid varje namn, och bara de som
+röstade i minst 65 procent av läsarens frågor rangordnas. Ordningen mellan två
+partikamrater vilar på mycket små skillnader. Och M och L går inte att skilja
+åt över huvud taget: de röstade lika i varenda votering i perioden.
 
 **Knappa voteringar redovisas som andel, inte som antal missade.** 157
 voteringar under perioden avgjordes med högst tio rösters marginal, och

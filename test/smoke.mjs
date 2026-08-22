@@ -288,6 +288,76 @@ current = "jamfor";
   }
 }
 
+// 4d. the quiz: answer every question, then check the result page keeps the
+// editorial rules — a denominator per member, the median to read the numbers
+// against, and the note that party colleagues barely differ.
+current = "dinplats";
+{
+  const intro = await visit("dinplats", "#/dinplats");
+  if (!/Var står du/.test(intro)) fail("dinplats", "saknar rubrik");
+  const quiz = JSON.parse(fs.readFileSync(path.join(SITE, "data", "quiz.json"), "utf8"));
+  if (quiz.fragor.length < 10) fail("dinplats", `bara ${quiz.fragor.length} frågor i quiz.json`);
+
+  // every question must be answerable without the rest of the betänkande, so
+  // no question may be a bare reference back to something unseen
+  for (const q of quiz.fragor) {
+    if (q.fraga.length < 40) fail("dinplats", `för kort fråga: ${q.fraga}`);
+    if (/^(Detta|Det|Dessa|Vad som)\b/.test(q.fraga)) {
+      fail("dinplats", `frågan syftar bakåt: ${q.fraga.slice(0, 60)}`);
+    }
+    // agreeing with a reservation has to mean a Nej in the chamber
+    for (const party of q.forslagsstallare) {
+      if (q.linjer[party] !== "Nej") {
+        fail("dinplats", `${party} röstade inte Nej i sin egen reservation (${q.bet})`);
+      }
+    }
+  }
+
+  // answer them all, alternating so the reader does not land on a party line
+  for (let i = 0; i < quiz.fragor.length; i += 1) {
+    const label = i % 3 === 2 ? "Ingen åsikt" : i % 2 ? "Håller inte med" : "Håller med";
+    await page.locator(`.svarsknappar button:text-is("${label}")`).click();
+  }
+  await page.waitForSelector("ul.traffar-quiz li", { timeout: 10000 });
+  const result = await page.locator("#app").innerText();
+  if (!/\/dinplats\/[MI-]+$/.test(await page.evaluate(() => location.hash))) {
+    fail("dinplats", "svaren hamnade inte i adressen");
+  }
+  // the match list is a ranking, so it needs both a denominator and a median
+  const matches = await page.locator("ul.traffar-quiz li").count();
+  if (matches < 5) fail("dinplats", `${matches} matchande ledamöter`);
+  const firstMatch = await page.locator("ul.traffar-quiz li").first().innerText();
+  if (!/\d+ av \d+/.test(firstMatch)) {
+    fail("dinplats", `matchningen saknar nämnare: ${firstMatch.replace(/\n/g, " ").slice(0, 70)}`);
+  }
+  if (!/Medianledamoten röstade som du i/.test(result)) {
+    fail("dinplats", "matchlistan saknar medianen att läsa talen mot");
+  }
+  if (!/Medianparet på samma valsedel röstade olika i \d+ voteringar/.test(result)) {
+    fail("dinplats", "saknar noten om att partikamrater knappt skiljer sig åt");
+  }
+  if (!/frånvaro räknas varken för eller mot/i.test(result)) {
+    fail("dinplats", "saknar kvittningsförbehållet");
+  }
+  // the reader has to be on the map, and the map still has to hold the chamber
+  if ((await page.locator("svg .dupunkt circle").count()) !== 1) {
+    fail("dinplats", "läsarens punkt saknas i det politiska rummet");
+  }
+  if ((await page.locator("svg circle.punkt").count()) < 300) {
+    fail("dinplats", "ledamotspunkterna saknas i det politiska rummet");
+  }
+
+  // a shared result link has to reproduce the same page without answering
+  current = "dinplats/länk";
+  const shared = await visit("dinplats/länk", await page.evaluate(() => location.hash));
+  if (!/Så röstade riksdagen på dina frågor/.test(shared)) {
+    fail("dinplats/länk", "delad länk visar inte resultatet");
+  }
+  // and a broken answer string must fall back to the test rather than crash
+  const junk = await visit("dinplats/skräp", "#/dinplats/XYZ");
+  if (!/Var står du/.test(junk)) fail("dinplats/skräp", "ogiltiga svar gav inget test");
+}
+
 const leaving = await visit("lämnar", "#/lamnar");
 if (!leaving.includes("Lämnar riksdagen")) fail("lämnar", "saknar rubrik");
 
@@ -299,6 +369,7 @@ for (const heading of [
   "Personkryssen 2022",
   "Byte av partibeteckning",
   "Jämförelsen mellan två kandidater",
+  "Var står du?",
   "Källor",
 ]) {
   if (!about.includes(heading)) fail("om", `saknar avsnittet ”${heading}”`);
@@ -329,6 +400,7 @@ for (const [name, hash] of [
   ["blockkartan", "#/block"],
   ["valsedel", "#/valsedel"],
   ["valsedel/valkrets", "#/valsedel/" + encodeURIComponent("Stockholms kommun")],
+  ["dinplats", "#/dinplats"],
   ...(compareHash ? [["jamfor", compareHash]] : []),
   ["lämnar", "#/lamnar"],
   ["om", "#/om"],

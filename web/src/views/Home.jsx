@@ -79,6 +79,18 @@ export function Home() {
         </div>
       ) : null}
 
+      <div className="kort">
+        <h2>Vet du inte vad du tycker om kandidaterna?</h2>
+        <p>
+          {"Ta ställning till femton skarpa voteringar ur mandatperioden — formulerade " +
+            "som de partier som förlorade dem skrev dem — och se vilka ledamöter som " +
+            "röstade som du, och vilka av dem som står på en valsedel där du bor."}
+        </p>
+        <p className="hint">
+          <a href="#/dinplats">Var står du? →</a>
+        </p>
+      </div>
+
       <h2>Riksdagen 2022–2026 i siffror</h2>
       <StatRow>
         <Stat value={formatNumber(stats.antal_voteringar)} label="voteringar" />

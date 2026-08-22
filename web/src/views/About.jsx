@@ -147,6 +147,46 @@ export function About() {
             "uteslutna namnges under diagrammet."}
         </p>
 
+        <h2>Var står du?</h2>
+        <p>
+          {`Testet ställer ${stats.quiz ? stats.quiz.antal_fragor : 15} skarpa voteringar ur ` +
+            "mandatperioden till läsaren. Frågan är inte utskottets förslagstext — nio av tio " +
+            "lyder ”Riksdagen avslår motionerna” följt av en radda motionsnummer — utan " +
+            "kravet i den reservation som förlorade omröstningen, hämtat ur betänkandets " +
+            "fulltext. Att hålla med reservationen motsvarar därför ett nej i kammaren."}
+        </p>
+        <p>
+          {`Frågorna väljs av bygget, inte för hand. Av periodens voteringar återstår ` +
+            `${stats.quiz ? formatNumber(stats.quiz.av_voteringar) : "omkring 2 500"} med ` +
+            "känt utskottsförslag, och av dem behåller urvalet de som delar kammaren på " +
+            "riktigt, har en reservation från högst tre partier och en kravmening som går " +
+            "att läsa utan resten av betänkandet. Ur den mängden tas först de frågor som " +
+            "skiljer partilinjerna åt, sedan den mest omstridda frågan inom vart och ett av " +
+            "ett dussin ämnesområden, med tak för hur många frågor samma utskott, samma " +
+            "ämne och samma uppsättning reservanter får bidra med."}
+        </p>
+        <p>
+          {"Fyra saker begränsar svaret. Reservationer skrivs av dem som förlorade i " +
+            "utskottet, och utskottsmajoriteten har hela perioden varit regeringspartierna " +
+            "med SD — nio av tio dugliga frågor kommer därför från vänster- och " +
+            "mittenoppositionen. Urvalet kräver att minst en tredjedel av frågorna kommer " +
+            "från andra hållet, men balansen är inte jämn. En ledamot som inte röstade " +
+            "räknas varken för eller mot, eftersom frånvaro oftast är en kvittning och inte " +
+            "en ståndpunkt; nämnaren står därför utskriven vid varje namn. Ordningen mellan " +
+            "två partikamrater vilar på mycket små skillnader — medianparet på samma " +
+            "valsedel röstade olika i 2 voteringar av omkring 2 000. Och några partier går " +
+            "inte att skilja åt alls: M och L röstade lika i varenda votering i perioden."}
+        </p>
+        <p>
+          {`Prickens plats på kartan räknas ut ur samma principalkomponenter som ` +
+            "blockkartan, men på femton voteringar i stället för alla. Räknar man om " +
+            "ledamöternas platser på det viset hamnar de nära sina riktiga: sambandet är " +
+            `${stats.quiz ? stats.quiz.trohet[0].toFixed(2).replace(".", ",") : "0,99"} på ` +
+            "den vågräta axeln, men bara " +
+            `${stats.quiz ? stats.quiz.trohet[1].toFixed(2).replace(".", ",") : "0,75"} på ` +
+            "den lodräta. Läs den lodräta placeringen med stor försiktighet."}
+        </p>
+
         <h2>Valsedlarna</h2>
         <p>
           {"Vyn Din valsedel visar de fastställda valsedlarna i en valkrets i den ordning " +

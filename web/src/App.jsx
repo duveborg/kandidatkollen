@@ -8,13 +8,16 @@ import { Compare } from "./views/Compare.jsx";
 import { Home } from "./views/Home.jsx";
 import { Leaving } from "./views/Leaving.jsx";
 import { Member } from "./views/Member.jsx";
+import { Quiz } from "./views/Quiz.jsx";
 
 /* Hash routing, carried over unchanged from the pre-React site: these URLs are
    shareable and already published, so they must keep working.
      #/ledamot/<id>  #/kandidat/<namn>  #/block  #/lamnar  #/om
-   #/valsedel, #/valsedel/<valkrets> and #/jamfor/<id>/<id> were added later,
-   as was the optional person id on #/kandidat/<namn>/<pid>. Adding routes and
-   segments is safe; changing the existing ones is not. */
+   #/valsedel, #/valsedel/<valkrets>, #/jamfor/<id>/<id> and #/dinplats were
+   added later, as was the optional person id on #/kandidat/<namn>/<pid>.
+   Adding routes and segments is safe; changing the existing ones is not.
+   #/dinplats/<svar> carries the reader's own answers in the URL, which is
+   what makes a finished result shareable without a server. */
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash);
 
@@ -43,6 +46,7 @@ function routeTo(hash) {
   if (parts[0] === "valsedel") {
     return <Ballot constituency={parts[1] ? decodeURIComponent(parts[1]) : null} />;
   }
+  if (parts[0] === "dinplats") return <Quiz answers={parts[1] ?? null} />;
   if (parts[0] === "block") return <BlockMap />;
   if (parts[0] === "lamnar") return <Leaving />;
   if (parts[0] === "om") return <About />;
@@ -58,6 +62,7 @@ function Header() {
         </a>
         <nav>
           <a href="#/valsedel">Din valsedel</a>
+          <a href="#/dinplats">Var står du?</a>
           <a href="#/block">Blockkartan</a>
           <a href="#/lamnar">Lämnar riksdagen</a>
           <a href="#/om">Om siffrorna</a>

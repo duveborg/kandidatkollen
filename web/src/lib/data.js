@@ -95,7 +95,23 @@ export function loadComparisons() {
   return comparisonsPromise;
 }
 
-/* rum.json is only needed for the block map. */
+/* quiz.json is only needed by #/dinplats. It carries the fifteen questions,
+   every member's vote on them and the loadings that place a reader on the
+   block map — 23 kB, fetched when the reader opens the test. */
+let quizPromise = null;
+
+export function loadQuiz() {
+  if (!quizPromise) {
+    quizPromise = fetchJson("data/quiz.json").catch((err) => {
+      quizPromise = null;
+      throw err;
+    });
+  }
+  return quizPromise;
+}
+
+/* rum.json is needed by the block map and by the quiz result, which places
+   the reader among the members. */
 let spacePromise = null;
 
 export function loadPoliticalSpace() {

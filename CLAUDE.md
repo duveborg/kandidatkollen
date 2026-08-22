@@ -31,6 +31,12 @@ med `emptyOutDir: false`, annars raderas `site/data/`.
 `_S` — appens egen källkod kallar konstanten `SLUTLIG`, vilket ger 404. Det gick
 bara att fastställa genom att se vilka anrop sidan faktiskt gör.
 
+`fetch.py` hämtar också betänkandenas fulltext, men sparar dem inte: sidorna
+är ~350 kB styck och bara reservationernas ställningstaganden behövs, så de
+destilleras till `data/cache/reservationer/<dok_id>.json` (854 filer, 28 MB i
+stället för 300). Priset är att en ändrad utplockning kräver ny hämtning —
+ändra `las_reservationer()` och radera katalogen, inte tvärtom.
+
 `fetch.py` hoppar över befintliga filer utom `kandidaturer.csv`, som
 Valmyndigheten uppdaterar varje timme fram till valdagen **13 september 2026**.
 Kör om båda stegen innan publicering. `data/` och hela `site/` är genererade
@@ -46,10 +52,14 @@ och versionshanteras inte — inget under `site/` redigeras för hand.
   fritt. Men inga UI-ramverk eller routerbibliotek utöver React: routern är
   30 rader i `App.jsx`, och hashadresserna (`#/ledamot/<id>`, `#/block`,
   `#/lamnar`, `#/om`, `#/kandidat/<namn>`, `#/valsedel`,
-  `#/valsedel/<valkrets>`, `#/jamfor/<id>/<id>`) är publicerade och får inte
-  ändras. Att *lägga
+  `#/valsedel/<valkrets>`, `#/jamfor/<id>/<id>`, `#/dinplats`) är publicerade
+  och får inte ändras. Att *lägga
   till* ett segment går bra: `#/kandidat/<namn>/<pid>` pekar ut vilken av
   flera namnar som avses, och den gamla formen fortsätter fungera.
+  `#/dinplats/<svar>` bär läsarens egna svar som en sträng av `M`, `I` och
+  `-`, ett tecken per fråga i `quiz.json`s ordning — det är det som gör ett
+  färdigt resultat delbart utan server, och strängens längd måste därför
+  matcha antalet frågor eller vyn faller tillbaka på testet.
 - **Engelska identifierare** i `web/` och `test/` — variabler, funktioner,
   komponenter, filnamn och kommentarer. Riksdagstermer som namnger något i
   datan behålls som de är: `votering`, `valkrets`, `riksmöte`, `betänkande`.
@@ -90,6 +100,10 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | Aktuellt parti | Voteringsraderna ligger **inte i datumordning**. "Senaste raden vinner" gav fel parti för fem av de nio som bytte beteckning under perioden — och därmed fel partifärg, fel medianjämförelse och fel `matbar`. Läs alltid ut partiet kronologiskt ur `_partitid`. |
 | Avvikelsenämnaren | `avvikelser.andel` räknas på `av_roster` = röster där ledamotens parti **hade en linje**, inte på alla avlagda röster. För den som lämnat sitt parti är skillnaden hela den obundna perioden, där ingen avvikelse är möjlig. `mot_parti` bär partiet avvikelserna mättes mot, och är inte alltid det aktuella. |
 | 132 mot 129 | 132 ledamöter saknar kandidatur och ligger i sökindexet, men `lamnar_riksdagen` har 129: listan kräver >100 mätbara voteringar. Paulina Brandberg (70), Mats Nordberg (38) och Annie Lööf (58) faller bort. Båda talen är riktiga — förväxla dem inte. |
+| Reservationstexten | Utskottsförslagets egen text duger inte som fråga till en läsare: **nio av tio** lyder "Riksdagen avslår motionerna" följt av motionsnummer. Kravet står i reservationens *Ställningstagande*, som bara finns i betänkandets fulltext. Reservationen kopplas på `(dok_id, punkt, partier)` — alla tre behövs, en punkt har ofta flera reservationer. |
+| Betänkandenas html | Exporterad ur Word, med ord delade mitt itu över `<span>`-gränser: `arbetslöshets<span>&#xad;</span>försäkringen` och `till a</span><span>tt`. Ersätter man varje tagg med mellanslag blir orden isärskrivna ("funktionsnedsätt ningar"). Blocktaggar blir mellanslag, inline-taggar försvinner spårlöst. |
+| Quizurvalets ordning | Girigt urval är en kedja: ändras poolen ändras fråga 1, och därmed alla efterföljande. Två körningar gav olika frågor tills lika lägen bröts på `votering_id` och all iteration gick över sorterade listor. Verifierat med olika `PYTHONHASHSEED`. |
+| Andra axeln i quizet | Frågor valda enbart på partiseparation och bredd ligger nästan alla längs komponent 1, och läsarens lodräta placering blir brus — troheten var 0,50. Två frågor väljs därför på sin laddning i komponent 2, vilket lyfter den till 0,92. Ta inte bort `QUIZ_ANDRA_AXELN` utan att mäta om. |
 | Utskottsforslag | 894 betänkanden efterfrågas, 854 ger användbart svar. `load_amnen()` hoppar över filer <200 B, och 24 refererade voteringar saknar därför utskottsförslag: 3 bland avvikelseexemplen och de knappa voteringarna, 22 av jämförelsevyns 384, varav en är samma votering. Gränssnittet måste tåla det, och rubriken faller tillbaka på betänkandebeteckningen, som alltid står i voteringsraden. |
 
 ## Redaktionella regler som inte får brytas
@@ -137,6 +151,25 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
   stå med medianen för alla par intill. Måtten intill varandra läses mot
   medianen, aldrig mot varandra — kvittningsfällan gäller även här, och två
   röstandelar sida vid sida är en tvåmannatopplista.
+- **Att hålla med en reservation är ett Nej i kammaren.** Reservationen är
+  alltid den förlorande sidan; `build_quiz()` sållar bort voteringar där
+  reservanterna inte röstade Nej, så mappningen håller för varje fråga.
+  Vänder man på den blir varje matchning spegelvänd, och inget i
+  gränssnittet skulle avslöja det.
+- **Quizet får inte bli en ensidig lista.** Reservationer skrivs av dem som
+  förlorade i utskottet, och utskottsmajoriteten är regeringspartierna med
+  SD: 239 av 295 dugliga frågor kommer från vänster- och mittenoppositionen.
+  `QUIZ_MIN_HOGER` kräver minst fem frågor från andra hållet. Utan det hamnar
+  läsaren som håller med om allt till vänster av frågornas konstruktion och
+  inte av sina åsikter.
+- **Frånvaro räknas varken för eller mot i matchningen.** Kvittningsfällan
+  igen: räknas utebliven röst som oenighet hamnar de mest utkvittade — alltså
+  partiledarna — sist i varje läsares lista. Nämnaren är per ledamot och
+  skrivs alltid ut.
+- **Matchlistan kräver ett golv.** Bara 16 ledamöter röstade i alla femton
+  frågorna och tre fjärdedelar i tolv eller färre, så utan golv toppas listan
+  av den som har minst att jämföra med (7 av 7 slår 9 av 10). Golvet är 65 %
+  av de frågor läsaren svarat på, och medianen står intill talen.
 - **Skriv procentenheter, inte procent**, för skillnader mot medianen.
 - **Varje förbehåll i koden ska också stå på `#/om`**, formulerat för en
   läsare. Lägger du till ett mått, lägg till dess begränsning där.
@@ -151,8 +184,9 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
 ## Struktur
 
 ```
-build/fetch.py       hämtar rådata, cachar 854 utskottsforslag och 29
-                     valkretsresultat från valet 2022
+build/fetch.py       hämtar rådata, cachar 854 utskottsforslag, 854
+                     reservationsuppsättningar och 29 valkretsresultat
+                     från valet 2022
 build/build.py       all beräkning; funktionsdocstrings bär metodvalen
 vite.config.js       root: web/, out: site/, plugin som serverar /data i dev
 web/index.html       skalet, #root
@@ -164,13 +198,14 @@ web/src/components/  Stat, Note, HitRow, CandidateBadge, Vote, CandidacyCard,
                      PersonalVoteCard, ActivitySection,
                      charts/{HeatTable, Timeline, PoliticalSpace, labels}
 web/src/views/       Home, Member, Candidate, Compare, Ballot, Leaving,
-                     BlockMap, About
+                     BlockMap, Quiz, About
 web/src/style.css    ljust/mörkt via prefers-color-scheme, --parti per parti
 test/smoke.mjs       Playwright-rökprov över alla vyer
 site/                enbart byggd output
 site/data/           index.json + stats.json laddas direkt; rum.json vid
                      #/block; valsedlar.json vid #/valsedel; jamforelser.json
-                     vid #/jamfor; voteringar.json vid utfällning
+                     vid #/jamfor; quiz.json + rum.json vid #/dinplats;
+                     voteringar.json vid utfällning
 ```
 
 `index.json` skickas packat (`falt` + positionsrader) och packas upp till
@@ -219,6 +254,9 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | personvalet 2022 | 67 av 349 personvalda, 166 över spärren, 13 684 kandidater med kryss |
 | personval per ledamot | 424 av 426 matchade, varav 59 personvalda (de 8 som fattas är statsråd och talman, som inte finns i voteringsdatan) |
 | knappa voteringar | median 89 % deltagande bland 364 heltidsledamöter |
+| quizet | 15 frågor ur 280 dugliga, 5 från regeringssidan eller SD, 413 ledamöter med svar |
+| quizets trohet | 0,98 på första axeln och 0,92 på den andra, mot ledamöternas riktiga plats i rum.json |
+| oskiljbara partier | M och L, i varenda votering i perioden |
 
 Ändras siffran för sökindex eller kandidatur 2026 är `flip_namn()` och
 `person_nyckel()` det första att titta på: den ena slår ihop namn som stod

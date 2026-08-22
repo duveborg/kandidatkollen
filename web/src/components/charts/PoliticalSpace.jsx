@@ -16,11 +16,13 @@ function groupByParty(members) {
 }
 
 /* Scatter plot of the political space. Each point is a member, coloured by
-   party; the text is the party's centre point. */
-export function PoliticalSpace({ space }) {
+   party; the text is the party's centre point. `reader` is optional and marks
+   someone who is not in the chamber — the quiz places its reader here, and
+   the point has to be inside the domain or it would be clipped. */
+export function PoliticalSpace({ space, reader = null }) {
   const members = space.ledamoter;
-  const xs = members.map((m) => m.x);
-  const ys = members.map((m) => m.y);
+  const xs = members.map((m) => m.x).concat(reader ? [reader.x] : []);
+  const ys = members.map((m) => m.y).concat(reader ? [reader.y] : []);
 
   let x0 = Math.min(...xs);
   let x1 = Math.max(...xs);
@@ -77,6 +79,16 @@ export function PoliticalSpace({ space }) {
           </circle>
         ))}
 
+        {reader ? (
+          <g className="dupunkt">
+            <circle cx={sx(reader.x).toFixed(1)} cy={sy(reader.y).toFixed(1)} r={9} />
+            <text x={sx(reader.x).toFixed(1)} y={(sy(reader.y) - 14).toFixed(1)}
+                  textAnchor="middle">
+              Du
+            </text>
+          </g>
+        ) : null}
+
         {labels.map((label) => (
           <text
             key={label.party}
@@ -101,7 +113,8 @@ export function PoliticalSpace({ space }) {
       <figcaption>
         {`Varje punkt är en ledamot, placerad efter hur hen röstat i ${formatNumber(space.antal_voteringar)} ` +
           "voteringar. Axlarna är inte förutbestämda: de är de två riktningar där " +
-          "ledamöterna skiljer sig mest. Håll över en punkt för namn."}
+          "ledamöterna skiljer sig mest. Håll över en punkt för namn." +
+          (reader ? " Den svarta ringen är du." : "")}
       </figcaption>
 
       <div className="legend">

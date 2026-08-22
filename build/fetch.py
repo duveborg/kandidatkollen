@@ -5,6 +5,9 @@ Källor:
   - data.riksdagen.se  voteringar + personuppgifter (bulkdumpar)
   - data.riksdagen.se  sagt och gjort: anföranden, motioner, frågor, interpellationer
   - data.riksdagen.se  utskottsforslag (ett anrop per betänkande, cachas)
+  - data.riksdagen.se  betänkandenas fulltext, för reservationernas
+                       ställningstaganden (cachas destillerade, se
+                       fetch_reservationer)
   - data.riksdagen.se  personlista, för id-mappning (se fetch_idkarta)
   - data.val.se        kandidaturer inför valet 2026
   - resultat.val.se    slutresultatet i riksdagsvalet 2022, per valkrets
@@ -15,11 +18,14 @@ därför alltid på nytt.
 """
 
 import csv
+import html
 import io
 import json
 import os
+import re
 import sys
 import time
+import xml.etree.ElementTree as ET
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from urllib.request import urlopen, Request
@@ -27,6 +33,7 @@ from urllib.request import urlopen, Request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "data", "raw")
 CACHE = os.path.join(ROOT, "data", "cache", "utskottsforslag")
+RESERVATIONER = os.path.join(ROOT, "data", "cache", "reservationer")
 
 # Mandatperioden som valdes i september 2022.
 RIKSMOTEN = ["2022/23", "2023/24", "2024/25", "2025/26"]
@@ -252,6 +259,119 @@ def fetch_utskottsforslag():
     print("    klart")
 
 
+# ------------------------------------------------------- reservationstexter
+
+# Betänkandena är exporterade ur Word och delar ord mitt itu över
+# <span>-gränser: "arbetslöshets<span>&#xad;</span>försäkringen" och
+# "till a</span><span>tt". Ersätts varje tagg med mellanslag blir orden
+# isärskrivna ("funktionsnedsätt ningar"), så blocktaggar blir mellanslag
+# och inline-taggar försvinner spårlöst.
+BLOCKTAGG = re.compile(r"(?is)</?(p|div|br|tr|td|th|table|li|ul|ol|h[1-6])\b[^>]*>")
+INLINETAGG = re.compile(r"(?s)<[^>]+>")
+
+# Reservationerna har en egen styckesklass i betänkandets html, och rubriken
+# bär både punktnummer och partier: "Fler vägar till jobb, punkt 1 (SD)".
+RESERVATIONSBLOCK = re.compile(
+    r'<p class="Reservationsrubrik"[^>]*>(.*?)</p>(.*?)'
+    r'(?=<p class="Reservationsrubrik"|$)', re.S)
+RESERVATIONSRUBRIK = re.compile(r"^(.*?),\s*punkt\s*(\d+)\s*\(([^)]*)\)\s*$")
+
+
+def htmltext(s):
+    """Gör ett stycke betänkandehtml till löpande text."""
+    s = re.sub(r"(?is)<(script|style).*?</\1>", " ", s)
+    s = s.replace("&#xad;", "").replace("&shy;", "")
+    s = BLOCKTAGG.sub(" \x00 ", s)
+    s = INLINETAGG.sub("", s)
+    s = html.unescape(html.unescape(s))
+    s = s.replace("\u00ad", "").replace("\xa0", " ").replace("\x00", " ")
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def las_reservationer(sida):
+    """Reservationerna i ett betänkande, med sina ställningstaganden.
+
+    Utskottsförslagets egen text duger inte som fråga till en läsare: nio av
+    tio lyder "Riksdagen avslår motionerna 400, 1577, 1878 ...". Det som går
+    att svara ja eller nej på står i reservationens ställningstagande, och
+    det finns bara i betänkandets fulltext.
+    """
+    ut = []
+    for m in RESERVATIONSBLOCK.finditer(sida):
+        rubrik = RESERVATIONSRUBRIK.match(htmltext(m.group(1)))
+        if not rubrik:
+            continue
+        kropp = htmltext(m.group(2))
+        i = kropp.find("Ställningstagande")
+        if i < 0:
+            continue
+        ut.append({
+            "punkt": rubrik.group(2),
+            "partier": sorted(p.strip() for p in rubrik.group(3).split(",") if p.strip()),
+            "rubrik": rubrik.group(1).strip(),
+            "text": kropp[i + len("Ställningstagande"):].strip(),
+        })
+    return ut
+
+
+def dokid_i_cache():
+    """dok_id för varje cachat utskottsförslag."""
+    ut = set()
+    for name in sorted(os.listdir(CACHE)):
+        path = os.path.join(CACHE, name)
+        if not have(path, 200):
+            continue
+        try:
+            root = ET.parse(path).getroot()
+        except ET.ParseError:
+            continue
+        dok = root.find("dokument")
+        if dok is None:
+            continue
+        dok_id = (dok.findtext("dok_id") or "").strip()
+        if dok_id:
+            ut.add(dok_id)
+    return sorted(ut)
+
+
+def fetch_reservationer():
+    """Ett anrop per betänkande, men bara reservationstexten sparas.
+
+    Fulltexterna är omkring 350 kB styck och skulle lägga ett par hundra
+    megabyte till data/raw/. Det som behövs är några kilobyte per
+    betänkande, så sidan destilleras direkt och html:en kastas. Priset är
+    att en ändrad utplockning kräver ny hämtning.
+    """
+    os.makedirs(RESERVATIONER, exist_ok=True)
+    jobs = [d for d in dokid_i_cache()
+            if not os.path.exists(os.path.join(RESERVATIONER, "%s.json" % d))]
+    if not jobs:
+        print("  finns: alla reservationer cachade")
+        return
+
+    print("  hämtar %d betänkanden ..." % len(jobs))
+    done = [0]
+
+    def one(dok_id):
+        path = os.path.join(RESERVATIONER, "%s.json" % dok_id)
+        try:
+            sida = get("https://data.riksdagen.se/dokument/%s" % dok_id).decode(
+                "utf-8", "replace")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"dok_id": dok_id, "reservationer": las_reservationer(sida)},
+                          f, ensure_ascii=False)
+        except Exception as e:
+            print("    varning: %s: %s" % (dok_id, e), file=sys.stderr)
+        finally:
+            done[0] += 1
+            if done[0] % 50 == 0:
+                print("    %d/%d" % (done[0], len(jobs)))
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(one, jobs))
+    print("    klart")
+
+
 def main():
     os.makedirs(RAW, exist_ok=True)
     print("voteringar:")
@@ -268,6 +388,8 @@ def main():
     fetch_val2022()
     print("utskottsforslag:")
     fetch_utskottsforslag()
+    print("reservationer:")
+    fetch_reservationer()
     print("\nklart. rådata i %s" % RAW)
 
 
