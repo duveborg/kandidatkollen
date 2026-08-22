@@ -8,9 +8,9 @@ export async function fetchJson(url) {
 }
 
 /* index.json ships as {falt, rader} with positional rows to keep the payload
-   small — 79 kB gzipped for 6 321 candidates. Unpack it once on load: named
-   fields read better, and the normalized name is precomputed so the search
-   does not re-normalize 6 321 names on every keystroke. */
+   small — one row per person. Unpack it once on load: named fields read
+   better, and the normalized name is precomputed so the search does not
+   re-normalize 6 437 names on every keystroke. */
 function unpackIndex(index) {
   return index.rader.map((r) => ({
     name: r[0],
@@ -24,6 +24,9 @@ function unpackIndex(index) {
     // whose ballot they stand on
     partyInRiksdag: r[7],
     deviations: r[8],
+    // the candidate's person id, and the only key a ballot row may join on:
+    // 99 names are borne by more than one person, so a name is not an identity
+    pid: r[9],
     searchName: normalize(r[0]),
   }));
 }
@@ -34,7 +37,19 @@ export async function loadBaseData() {
     fetchJson("data/stats.json"),
   ]);
   const rows = unpackIndex(index);
-  return { rows, stats, byName: new Map(rows.map((row) => [row.searchName, row])) };
+  /* byName keeps one row per name and is only for routes that carry a name and
+     nothing else (#/kandidat/<namn>, which is published and has to keep
+     working). Everything that can carry a pid uses byPid — see byName's
+     shortcoming in Candidate.jsx, which says out loud when a name is shared. */
+  const byName = new Map();
+  const byPid = new Map();
+  const sharedNames = new Set();
+  for (const row of rows) {
+    if (byName.has(row.searchName)) sharedNames.add(row.searchName);
+    else byName.set(row.searchName, row);
+    if (row.pid != null) byPid.set(row.pid, row);
+  }
+  return { rows, stats, byName, byPid, sharedNames };
 }
 
 /* voteringar.json is large and only needed once a reader expands a row, so it

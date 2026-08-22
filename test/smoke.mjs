@@ -35,6 +35,56 @@ function serve() {
 const failures = [];
 const fail = (where, message) => failures.push(`${where}: ${message}`);
 
+/* Data contract between index.json and valsedlar.json. A ballot row joins on
+   the person id and never on the name: 99 candidate names are borne by more
+   than one person, and joining on the name linked seven ballot rows to a
+   different member with the same name (S's Jonas Andersson in Jämtland to
+   SD's in Östergötland). Checked here rather than in the browser because it
+   is an invariant of the payloads, and a silent one — the wrong link renders
+   perfectly. */
+{
+  const where = "data/pid";
+  const read = (f) => JSON.parse(fs.readFileSync(path.join(SITE, "data", f), "utf8"));
+  const index = read("index.json");
+  const ballots = read("valsedlar.json");
+  const col = Object.fromEntries(index.falt.map((name, i) => [name, i]));
+  const byPid = new Map();
+  for (const row of index.rader) {
+    const pid = row[col.pid];
+    if (pid == null) continue;
+    if (byPid.has(pid)) fail(where, `pid ${pid} förekommer på två indexposter`);
+    byPid.set(pid, row);
+  }
+
+  let positions = 0;
+  const crossParty = [];
+  for (const list of ballots.listor) {
+    for (const [name, , pid] of list.kandidater) {
+      positions += 1;
+      const row = byPid.get(pid);
+      if (typeof pid !== "number" || !row) {
+        fail(where, `kandidatplatsen ”${name}” har inget pid i sökindexet`);
+        continue;
+      }
+      const inRiksdag = row[col.riksdagsparti];
+      // A sitting member may stand for another party — nine left theirs during
+      // the period — but then the list party is not their Riksdag party either.
+      if (row[col.ledamot_id] && inRiksdag && inRiksdag !== list.parti &&
+          row[col.parti] !== list.parti) {
+        crossParty.push(`${name} (${inRiksdag}) på ${list.parti ?? list.parti_full}s lista`);
+      }
+    }
+  }
+  if (positions !== 10521) fail(where, `${positions} kandidatplatser, väntade 10 521`);
+  // The nine switchers all went from a party to independent, so a member on
+  // another party's list is expected only there. More than a handful means the
+  // join is matching on something other than the person again.
+  if (crossParty.length > 3) {
+    fail(where, `${crossParty.length} kandidatplatser länkar till ledamot i annat parti: ` +
+      crossParty.slice(0, 5).join("; "));
+  }
+}
+
 const { server, port } = await serve();
 const base = `http://127.0.0.1:${port}`;
 const browser = await chromium.launch();

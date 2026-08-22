@@ -11,7 +11,9 @@ import { Member } from "./views/Member.jsx";
 /* Hash routing, carried over unchanged from the pre-React site: these URLs are
    shareable and already published, so they must keep working.
      #/ledamot/<id>  #/kandidat/<namn>  #/block  #/lamnar  #/om
-   #/valsedel and #/valsedel/<valkrets> were added later. */
+   #/valsedel and #/valsedel/<valkrets> were added later, as was the optional
+   person id on #/kandidat/<namn>/<pid>. Adding segments is safe; changing the
+   existing ones is not. */
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash);
 
@@ -28,7 +30,11 @@ function routeTo(hash) {
   const parts = hash.replace(/^#/, "").split("/").filter(Boolean);
   if (parts[0] === "ledamot" && parts[1]) return <Member id={parts[1]} />;
   if (parts[0] === "kandidat" && parts[1]) {
-    return <Candidate name={decodeURIComponent(parts[1])} />;
+    /* The optional third segment is the person id, added because a name does
+       not identify a person. Links without it are older and still valid. */
+    return (
+      <Candidate name={decodeURIComponent(parts[1])} pid={parts[2] ?? null} />
+    );
   }
   if (parts[0] === "valsedel") {
     return <Ballot constituency={parts[1] ? decodeURIComponent(parts[1]) : null} />;

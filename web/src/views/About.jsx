@@ -231,10 +231,23 @@ export function About() {
         <h2>Kopplingen till valsedeln</h2>
         <p>
           {"Kandidatlistorna kommer från Valmyndigheten och matchas mot riksdagens ledamöter " +
-            "på namn. Det ger fel i två riktningar: två personer med samma namn kan slås " +
-            "samman, och en ledamot vars namn stavas olika i de två källorna kan felaktigt " +
-            "framstå som att hen inte kandiderar. Profilsidan flaggar de fall där matchningen " +
-            "är osäker. Kontrollera alltid mot valsedeln."}
+            "på namn — men ett namn är ingen person. Kandidaturfilen har ingen " +
+            "personidentifierare, och 99 namn i riksdagsvalet bärs av mer än en kandidat: " +
+            "”Anna Ekström” är både 67 år och bosatt i Stockholm och 44 år och bosatt i " +
+            "Gnesta, ”Anders Karlsson” är fyra personer mellan 47 och 64 år. Åldern på " +
+            "valdagen, könet och folkbokföringskommunen skiljer alla 6 305 kandidater åt, " +
+            "och varje rad på en valsedel här är kopplad till sin ledamot på det, aldrig på " +
+            "namnet."}
+        </p>
+        <p>
+          {"Vilken av namnarna som är ledamoten avgörs av åldern, som bara kan ha två värden: " +
+            "den som är född ett visst år är antingen 2026 minus födelseåret eller ett år " +
+            "yngre på valdagen den 13 september. Tre matchningar faller på den regeln och är " +
+            "bevisligen andra personer — bland dem den ena av riksdagens två Mattias " +
+            "Karlsson, som annars fick den andres kandidatur. Kopplingen kan ändå fela i den " +
+            "andra riktningen: en ledamot vars namn stavas olika i de två källorna framstår " +
+            "felaktigt som att hen inte kandiderar. Profilsidan flaggar de fall där " +
+            "matchningen är osäker. Kontrollera alltid mot valsedeln."}
         </p>
         <p>
           {"En del av kandidaterna står i filen med efternamnet först. Sajten vänder på dem, " +

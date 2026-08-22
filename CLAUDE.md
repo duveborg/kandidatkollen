@@ -46,7 +46,9 @@ och versionshanteras inte — inget under `site/` redigeras för hand.
   fritt. Men inga UI-ramverk eller routerbibliotek utöver React: routern är
   30 rader i `App.jsx`, och hashadresserna (`#/ledamot/<id>`, `#/block`,
   `#/lamnar`, `#/om`, `#/kandidat/<namn>`, `#/valsedel`,
-  `#/valsedel/<valkrets>`) är publicerade och får inte ändras.
+  `#/valsedel/<valkrets>`) är publicerade och får inte ändras. Att *lägga
+  till* ett segment går bra: `#/kandidat/<namn>/<pid>` pekar ut vilken av
+  flera namnar som avses, och den gamla formen fortsätter fungera.
 - **Engelska identifierare** i `web/` och `test/` — variabler, funktioner,
   komponenter, filnamn och kommentarer. Riksdagstermer som namnger något i
   datan behålls som de är: `votering`, `valkrets`, `riksmöte`, `betänkande`.
@@ -74,6 +76,8 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | Nationella listor | En kandidatur replikeras över alla 29 valkretsar. Nyckeln är `(namn, parti, listnummer)`; ≥29 valkretsar betyder "Hela landet". Valsedelns identitet är i stället `(parti, listnummer, VALKRETSBETECKNING PÅ VALSEDELN)` — beteckningen `HELA LANDET` är det som skiljer en nationell sedel från en valkretssedel. |
 | `NAMN` i kandidaturfilen | 2 262 rader står som **"Efternamn, Förnamn"**, resten omvänt. Det är gruppen utan fastställd valsedel — 75 personer, replikerade över 29 valkretsar. `flip_namn()` vänder dem; utan den hamnar de baklänges i sökindexet och kan aldrig matcha en ledamot. Det var så Katja Nybergs kandidatur för Valsamverkanspartiet var osynlig. Ett namn har i stället ett efterhängande komma och står redan rätt — vänd inte på det. |
 | `GILTIG` i kandidaturfilen | 770 kandidaturer har `GILTIG=N` — kandidaten har inte lämnat förklaring, och `NAMN` är då maskerat till strängen "inte lämnat förklaring". Platsen finns kvar i numreringen, så listan får **hål** (upp till 7 på en lista). Filtrera bort dem från kandidater men behåll positionen i `ogiltiga`, annars ser hålet ut som en bugg. |
+| `NAMN` identifierar ingen person | Kandidaturfilen har **ingen personidentifierare**, och **99 namn bärs av mer än en person**: "Anna Ekström" är både 67 år i Stockholm och 44 i Gnesta, "Anders Karlsson" är fyra personer mellan 47 och 64. `person_nyckel()` = (namn, ålder på valdagen, kön, folkbokföringskommun) skiljer alla 6 305; ingen delar alla tre med en namne. Åldern räcker för 96 av de 99 namnen — de tre sista är jämnåriga kvinnor som bara skiljs av kommunen. Slår man ihop på namn ärver den ena den andras kandidaturer, och valsedelvyn länkade sju kandidatplatser till fel ledamot — S:s Jonas Andersson i Jämtland till SD:s i Östergötland. Klienten kopplar därför på `pid`, aldrig på namn. |
+| Ledamot mot kandidat | Åldern på valdagen är **det enda som skiljer namnar**, och den har exakt två möjliga värden: en ledamot född år Y är `VALÅR-Y` eller `VALÅR-Y-1` den 13 september 2026. Semantiken är verifierad — 206 av 294 matchade ledamöter har det högre värdet och 88 det lägre, alltså 70/30, precis andelen av året före 13 september (70,1 %). Regeln används som **veto**, inte bara som skiljedomare: tre matchningar faller på den och alla tre är andra personer. SD:s Mattias Karlsson (f. 1977) ärvde annars moderatens kandidatur, eftersom **två sittande ledamöter delar det namnet** — och båda delade en enda post i sökindexet. |
 | Namnformer i 2022-resultatet | Filen bär **tre namnformer**. `personroster` använder tilltalsnamn (samma form som valsedeln och riksdagen), medan `kvalificeradeForPersonvalLista` och `ledamoterPerParti` använder fulla folkbokföringsnamn: "Mehrnoosh Dadgostar" för Nooshi Dadgostar, "Anna Kristina Axén Olin" för Kristina Axén Olin. **66 av 349** ledamöter skiljer sig. Matcha inte på namn mellan delarna — de två senare delar `kandidatnummer`, och bryggan till `personroster` är **röstetalet**, som ger exakt en träff i alla 166 fall. |
 | Namnformer mot riksdagen | Riksdagens namn skiljer sig i sin tur från Valmyndighetens: bindestreck mot mellanslag ("Jamal El-Haj" / "Jamal El Haj"), punkt efter initial ("Carl B. Hamilton"), utelämnat mellannamn ("Emma Köster" / "Emma Ahlström Köster"), initial i stället för namn ("Linda W Snecker" / "Linda Westerlund Snecker") och till och med annan stavning av förnamnet ("Marcus" / "Markus Wiechel"). `namn_nyckel()` plus `hitta_kandidat()` tar 424 av 426 ledamöter; exakt matchning tog 406. |
 | Personröster i annan valkrets | Spärren prövas **per valkrets**. Åtta ledamöter -- sju av dem SD:s -- har noll kryss i den valkrets de valdes i men kryss i upp till 26 andra, eftersom partiets listor går över hela landet. Slå aldrig samman dem till en rikssiffra: kryss i Västmanland kunde inte ge mandatet i Blekinge. |
@@ -84,7 +88,7 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | Statsråd | Sittande statsråd förekommer **inte alls** i voteringsdatan. De 14 som gör det är avgångna statsråd som blivit vanliga ledamöter. |
 | Aktuellt parti | Voteringsraderna ligger **inte i datumordning**. "Senaste raden vinner" gav fel parti för fem av de nio som bytte beteckning under perioden — och därmed fel partifärg, fel medianjämförelse och fel `matbar`. Läs alltid ut partiet kronologiskt ur `_partitid`. |
 | Avvikelsenämnaren | `avvikelser.andel` räknas på `av_roster` = röster där ledamotens parti **hade en linje**, inte på alla avlagda röster. För den som lämnat sitt parti är skillnaden hela den obundna perioden, där ingen avvikelse är möjlig. `mot_parti` bär partiet avvikelserna mättes mot, och är inte alltid det aktuella. |
-| 129 mot 126 | 129 ledamöter saknar kandidatur och ligger i sökindexet, men `lamnar_riksdagen` har 126: listan kräver >100 mätbara voteringar. Paulina Brandberg, Mats Nordberg och Annie Lööf faller bort. Båda talen är riktiga — förväxla dem inte. |
+| 132 mot 129 | 132 ledamöter saknar kandidatur och ligger i sökindexet, men `lamnar_riksdagen` har 129: listan kräver >100 mätbara voteringar. Paulina Brandberg (70), Mats Nordberg (38) och Annie Lööf (58) faller bort. Båda talen är riktiga — förväxla dem inte. |
 | Utskottsforslag | 894 betänkanden efterfrågas, 854 ger användbart svar. `load_amnen()` hoppar över filer <200 B, och 3 refererade voteringar saknar därför utskottsförslag. Gränssnittet måste tåla det. |
 
 ## Redaktionella regler som inte får brytas
@@ -161,7 +165,7 @@ site/data/           index.json + stats.json laddas direkt; rum.json vid
 
 `index.json` skickas packat (`falt` + positionsrader) och packas upp till
 namngivna fält i `lib/data.js`. Det normaliserade namnet räknas ut en gång vid
-laddning, så sökningen slipper normalisera 6 313 namn per tangenttryck.
+laddning, så sökningen slipper normalisera 6 437 namn per tangenttryck.
 
 `valsedlar.json` bär bara namn och listplats. Valsedelvyn slår upp resten mot
 det redan laddade sökindexet på normaliserat namn — därför ligger
@@ -191,8 +195,9 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 |---|---|
 | voteringar (sakfrågan) | 2 571 |
 | avlagda röster | 897 279 |
-| ledamöter | 426, varav 297 med kandidatur 2026 |
-| sökindex | 6 313 poster (6 184 kandidater + 129 avgående) |
+| ledamöter | 426, varav 294 med kandidatur 2026 |
+| sökindex | 6 437 poster (6 305 kandidater + 132 utan kandidatur) |
+| kandidatpersoner | 6 305 på 6 184 unika namn; 99 namn delas |
 | median röstandel | 87,6 % bland 364 heltidsledamöter |
 | flest partiavvikelser | 26 av 2 100 röster, 1,24 % (Leila Ali Elmi, MP) |
 | knappa voteringar (≤10) | 157, medianledamoten missade 14 |
@@ -204,6 +209,7 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | personval per ledamot | 424 av 426 matchade, varav 59 personvalda (de 8 som fattas är statsråd och talman, som inte finns i voteringsdatan) |
 | knappa voteringar | median 89 % deltagande bland 364 heltidsledamöter |
 
-Ändras siffran för sökindex eller kandidatur 2026 är `flip_namn()` det första
-att titta på: den slår ihop namn som stod baklänges, och en sammanslagning
-flyttar en post från "avgående" till "kandiderar".
+Ändras siffran för sökindex eller kandidatur 2026 är `flip_namn()` och
+`person_nyckel()` det första att titta på: den ena slår ihop namn som stod
+baklänges, den andra håller namnar isär. Båda flyttar poster mellan "avgående"
+och "kandiderar".

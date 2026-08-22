@@ -10,9 +10,13 @@ export function HitRow({ row }) {
     row.constituency ? shortConstituency(row.constituency) : null,
   ].filter(Boolean);
 
+  /* The name alone is not an identity — 99 candidate names are shared — so a
+     candidate link carries the person id. The plain #/kandidat/<namn> form is
+     published and still works; it just cannot tell namesakes apart. */
   const href = row.memberId
     ? `#/ledamot/${row.memberId}`
-    : `#/kandidat/${encodeURIComponent(row.name)}`;
+    : `#/kandidat/${encodeURIComponent(row.name)}` +
+      (row.pid != null ? `/${row.pid}` : "");
 
   return (
     <li className={partyClass(row.party)}>

@@ -225,18 +225,27 @@ riksdagens egna namn krävs dessutom att bindestreck, punkter, utelämnade
 mellannamn och avvikande förnamnsstavning hanteras. Två ledamöter går ändå inte
 att hitta och saknar därför siffra.
 
-**Kopplingen till valsedeln sker på namn** och kan fela i två riktningar: två
-personer med samma namn kan slås samman, och en ledamot som stavas olika i de
-två källorna kan felaktigt framstå som att hen inte kandiderar. 297 av 426
-ledamöter matchas. Profilsidan flaggar osäkra fall.
+**Kopplingen till valsedeln sker på namn**, som inte identifierar en person.
+Kandidaturfilen har ingen personidentifierare, och 99 namn bärs av mer än en
+kandidat: "Anna Ekström" är både 67 år och bosatt i Stockholm och 44 år och
+bosatt i Gnesta. Åldern på valdagen, könet och folkbokföringskommunen skiljer
+alla 6 305 personerna åt, och åldern avgör vem av namnarna som är ledamoten —
+en ledamot född år Y är antingen 2026−Y eller 2025−Y år den 13 september. Tre
+matchningar faller på den regeln och är bevisligen andra personer, bland dem
+den ena av riksdagens två Mattias Karlsson, som annars ärvde den andres
+kandidatur. 294 av 426 ledamöter matchas. Kopplingen kan ändå fela i den andra
+riktningen: en ledamot som stavas olika i de två källorna framstår felaktigt
+som att hen inte kandiderar. Profilsidan flaggar osäkra fall, och valsedelns
+rader kopplas på ett löpnummer per person, aldrig på namnet.
 
 En del av kandidaterna står i filen med efternamnet först. Sajten vänder på
 dem, annars hamnar de baklänges i sökningen och kan aldrig matcha en ledamot.
 Det var så en ledamot som såg ut att lämna riksdagen visade sig kandidera för
 ett annat parti.
 
-**Sökindexet innehåller båda grupperna** — alla 6 184 kandidater i
-riksdagsvalet plus de 129 sittande ledamöter som inte kandiderar igen. Utan de
+**Sökindexet innehåller båda grupperna** — alla 6 305 kandidater i
+riksdagsvalet, en post per person och inte per namn, plus de 132 sittande
+ledamöter som inte kandiderar igen. Utan de
 senare går en avgående ledamot inte att söka upp, fastän sidan *Lämnar
 riksdagen* länkar till hen.
 

@@ -485,18 +485,50 @@ def flip_namn(s):
     return "%s %s" % (m.group(2).strip(), m.group(1).strip()) if m else s
 
 
+VALÅR = int(PERIOD_SLUT[:4])   # valåret, för åldersjämförelser mot valdagen
+
+
+def person_nyckel(namn, alder, kon, kommun):
+    """Identiteten hos en kandidat, som namnet inte räcker till för.
+
+    99 namn i kandidaturfilen bärs av mer än en person: "Anna Ekström" är
+    både 67 år och bosatt i Stockholm och 44 år och bosatt i Gnesta,
+    "Anders Karlsson" är fyra personer mellan 47 och 64 år. Filen har ingen
+    personidentifierare, men åldern på valdagen, könet och
+    folkbokföringskommunen skiljer dem: ingen av de 6 305 personerna delar
+    alla tre med en namne. Åldern räcker för 96 av de 99 namnen; de tre sista
+    är jämnåriga kvinnor som bara skiljs av kommunen (Johanna Persson 41 år i
+    Mora och i Östersund, Liselotte Larsson 57 i Hedemora och i Tibro, Marina
+    Nilsson 52 i Bollnäs och i Ystad). Ålder och kön är aldrig blanka;
+    kommunen är blank på 786 rader, men aldrig så att samma person står med
+    både blank och ifylld kommun -- en blank kommun delar alltså inte en
+    person i två.
+
+    Utan nyckeln slås namnarna ihop till en enda post. Sökindexet räknade
+    fyra Anders Karlssons kandidaturer som en persons fem, och valsedelvyn
+    länkade sju kandidatplatser till en helt annan ledamot med samma namn.
+    """
+    return (norm_namn(namn), as_int(alder), (kon or "").strip(),
+            (kommun or "").strip())
+
+
 def load_kandidater():
     """Kandidaturerna i riksdagsvalet 2026, i två vyer av samma rader.
 
     Returnerar (per_namn, sedlar). Den första nycklas på normaliserat namn
-    och kopplar en ledamot till valsedeln. Den andra är valsedlarna som de
-    faktiskt ser ut, nycklade på (parti, listnummer, valkretsbeteckning) --
+    och ger en lista av *personer* med det namnet -- se person_nyckel() för
+    varför det inte kan vara en post per namn. Den andra är valsedlarna som
+    de faktiskt ser ut, nycklade på (parti, listnummer, valkretsbeteckning):
     en nationell lista replikeras över alla 29 valkretsar i källan men är en
     enda valsedel, och beteckningen är det som skiljer dem åt.
+
+    Varje person får ett löpnummer, `pid`, som är den enda kopplingen mellan
+    valsedlarna och sökindexet. Klienten får aldrig slå upp en kandidat på
+    namn -- det är precis den genvägen som gav fel ledamot.
     """
     path = os.path.join(RAW, "kandidaturer.csv")
-    acc = {}      # (namn, parti, listnummer) -> kandidatur, valkretsar samlas
-    sedlar = {}   # (parti, listnummer, beteckning) -> valsedel
+    personer = {}   # personnyckel -> person med sina kandidaturer
+    sedlar = {}     # (parti, listnummer, beteckning) -> valsedel
     with open(path, encoding="utf-8-sig") as f:
         rows = csv.reader(f, delimiter=";")
         hdr = next(rows)
@@ -521,9 +553,7 @@ def load_kandidater():
                     "lista": lista,
                     "beteckning": beteckning,
                     "valkretsar": set(),
-                    "kandidater": {},
-                    "alder": {},
-                    "kon": {},
+                    "platser": {},
                     "ogiltiga": set(),
                 }
             sed["valkretsar"].add(d["VALKRETSNAMN"])
@@ -536,37 +566,55 @@ def load_kandidater():
                 if ordning:
                     sed["ogiltiga"].add(ordning)
                 continue
-            sed["kandidater"][namn] = ordning
-            sed["alder"][namn] = as_int(d["ÅLDER_PÅ_VALDAGEN"])
-            sed["kon"][namn] = d["KÖN"].strip()
 
-            key = (namn, parti_full, lista)
-            a = acc.get(key)
-            if a is None:
-                a = acc[key] = {
+            pkey = person_nyckel(namn, d["ÅLDER_PÅ_VALDAGEN"], d["KÖN"],
+                                 d["FOLKBOKFÖRINGSKOMMUN"])
+            p = personer.get(pkey)
+            if p is None:
+                p = personer[pkey] = {
+                    "pid": len(personer),
                     "namn": namn,
+                    "alder": as_int(d["ÅLDER_PÅ_VALDAGEN"]),
+                    "kon": d["KÖN"].strip(),
+                    "kommun": d["FOLKBOKFÖRINGSKOMMUN"].strip(),
+                    "kandidaturer": {},
+                }
+            # En person kan stå på flera listor. Kandidaturen är (parti,
+            # listnummer); valkretsarna samlas under den.
+            kkey = (parti_full, lista)
+            k = p["kandidaturer"].get(kkey)
+            if k is None:
+                k = p["kandidaturer"][kkey] = {
                     "parti_full": parti_full,
                     "parti": PARTI_ALIAS.get(parti_full),
                     "lista": lista,
                     "ordning": ordning,
-                    "alder": d["ÅLDER_PÅ_VALDAGEN"],
-                    "kon": d["KÖN"],
-                    "kommun": d["FOLKBOKFÖRINGSKOMMUN"].strip(),
                     "uppgift": d["VALSEDELSUPPGIFT"].strip(),
                     "valkretsar": [],
                 }
-            a["valkretsar"].append(d["VALKRETSNAMN"])
+            k["valkretsar"].append(d["VALKRETSNAMN"])
+            sed["platser"][p["pid"]] = {"namn": namn, "ordning": ordning,
+                                        "alder": p["alder"], "kon": p["kon"]}
 
     byname = collections.defaultdict(list)
-    for a in acc.values():
-        vk = sorted(set(a["valkretsar"]))
-        a["hela_landet"] = len(vk) >= 29
-        a["valkretsar"] = ["Hela landet"] if a["hela_landet"] else vk
-        byname[norm_namn(a["namn"])].append(a)
+    for p in personer.values():
+        kand = []
+        for k in p["kandidaturer"].values():
+            vk = sorted(set(k["valkretsar"]))
+            k["hela_landet"] = len(vk) >= 29
+            k["valkretsar"] = ["Hela landet"] if k["hela_landet"] else vk
+            kand.append(k)
+        kand.sort(key=lambda k: k["ordning"])
+        p["kandidaturer"] = kand
+        byname[norm_namn(p["namn"])].append(p)
     for lst in byname.values():
-        lst.sort(key=lambda a: a["ordning"])
-    print("  %d kandidaturer, %d unika namn, %d valsedlar (riksdagsvalet)"
-          % (len(acc), len(byname), len(sedlar)))
+        lst.sort(key=lambda p: p["kandidaturer"][0]["ordning"])
+
+    delade = sum(1 for lst in byname.values() if len(lst) > 1)
+    print("  %d kandidaturer, %d personer på %d unika namn, %d valsedlar"
+          % (sum(len(p["kandidaturer"]) for p in personer.values()),
+             len(personer), len(byname), len(sedlar)))
+    print("  %d namn bärs av mer än en person" % delade)
     return byname, sedlar
 
 
@@ -866,28 +914,83 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet,
     return out
 
 
+def valj_person(personer, rec):
+    """Vilken av personerna med ledamotens namn som faktiskt är ledamoten.
+
+    Åldern på valdagen avgör. En ledamot född år Y är antingen VALÅR-Y eller
+    VALÅR-Y-1 år den 13 september 2026, beroende på om födelsedagen passerat,
+    och inget annat. Semantiken är verifierad på de 294 ledamöter som matchar:
+    206 av dem har den högre åldern och 88 den lägre, alltså 70 mot 30 procent
+    -- precis andelen av året som ligger före den 13 september (70,1 %).
+
+    Regeln fungerar därför som veto och inte bara som skiljedomare mellan
+    namnar. Tre av 297 matchningar faller på den, och alla tre är bevisligen
+    andra personer:
+
+      Mattias Karlsson (SD, f. 1977) -- enda kandidaten med namnet är 54 år
+        och bor i Luleå, alltså riksdagens andra Mattias Karlsson (M, f.
+        1972). SD:s lämnar riksdagen.
+      Lars Andersson (SD, f. 1964) -- kandidaten är 60 år, inte 61 eller 62.
+      Malin Björk (C, f. 1969) -- kandidaten är 54 år, inte 56 eller 57.
+
+    Utan vetot ärvde SD:s Mattias Karlsson moderatens kandidatur, och båda
+    ledamöterna delade en enda post i sökindexet.
+
+    Returnerar (person, sakert). Ingen person kvar betyder att ledamoten inte
+    kandiderar. Sakert är falskt när flera personer står kvar oskiljda: då
+    visas kandidaturen ändå, men utan `pid`, så att den syns med ett
+    förbehåll på ledamotens sida utan att någon valsedelsrad länkar till hen.
+    Att i stället kasta kandidaturen vore värre -- ledamoten skulle hamna
+    bland dem som lämnar riksdagen.
+    """
+    kvar = personer
+    fodd = as_int(rec.get("fodd"))
+    if fodd:
+        aldrar = (VALÅR - fodd, VALÅR - fodd - 1)
+        kvar = [p for p in kvar if p["alder"] in aldrar]
+        if not kvar:
+            return None, True
+    if len(kvar) > 1 and rec.get("parti"):
+        samma = [p for p in kvar
+                 if any(k["parti"] == rec["parti"] for k in p["kandidaturer"])]
+        if samma:
+            kvar = samma
+    return kvar[0], len(kvar) == 1
+
+
 def koppla_kandidatur(rec, kandidater):
     """Matchar en ledamot mot kandidatlistorna för 2026.
 
-    Matchningen sker på normaliserat namn. Finns flera kandidaturer väljs
-    den i samma parti som ledamoten senast röstat för; annars den högsta
-    placeringen. Namnkollisioner mellan olika personer är möjliga och
-    därför redovisar posten hur många kandidaturer namnet gav.
+    Uppslaget sker på normaliserat namn, men namnet identifierar inte en
+    person -- se person_nyckel(). valj_person() väljer bland namnarna, och
+    posten bär `pid` så att valsedelvyn kan länka till rätt ledamot utan att
+    gå via namnet.
     """
-    matches = kandidater.get(norm_namn(rec["namn"]), [])
-    if not matches:
+    personer = kandidater.get(norm_namn(rec["namn"]), [])
+    if not personer:
         return None
-    same = [m for m in matches if m["parti"] == rec["parti"]]
-    k = (same or matches)[0]
+    p, sakert = valj_person(personer, rec)
+    if p is None:
+        return None
+    # Flera kandidaturer för samma person: den i ledamotens eget parti först,
+    # annars den högsta placeringen.
+    kand = p["kandidaturer"]
+    samma = [k for k in kand if k["parti"] == rec["parti"]]
+    k = (samma or kand)[0]
     return {
+        # Utan pid finns ingen koppling från valsedeln, vilket är precis
+        # meningen när det är oklart vem av namnarna som är ledamoten.
+        "pid": p["pid"] if sakert else None,
         "parti": k["parti"], "parti_full": k["parti_full"],
         "ordning": k["ordning"], "valkretsar": k["valkretsar"],
         "hela_landet": k["hela_landet"], "uppgift": k["uppgift"],
         # Byte räknas även mot ett parti utanför riksdagen, och för den som
         # lämnat sitt parti under perioden är varje kandidatur ett byte.
         "partibyte": (k["parti"] or None) != (rec["parti"] or None),
-        "antal_kandidaturer": len(matches),
-        "sakert_namn": len(matches) == 1 or bool(same),
+        "antal_kandidaturer": len(kand),
+        # Antal personer som bär namnet, och om vi kunde peka ut en av dem.
+        "namnar": len(personer),
+        "sakert_namn": sakert,
     }
 
 
@@ -1085,50 +1188,65 @@ def build_index(ledamoter, kandidater):
     annars går en avgående ledamot inte att söka upp, fastän sidan
     "Lämnar riksdagen" länkar till hen.
 
+    En post per *person*, inte per namn: 99 namn bärs av mer än en kandidat,
+    och slår man ihop dem får den ena personen den andras kandidaturer och
+    valkrets. `pid` följer med, eftersom det är den nyckel valsedelvyn
+    länkar på.
+
     Kompakt array-format för att hålla filen liten; den laddas av alla
     besökare. Ledamotsfälten står med eftersom valsedelvyn behöver dem för
     varje namn på en lista, och 426 uppslag mot ledamot/*.json vore orimligt.
     """
-    by_norm = {norm_namn(l["namn"]): l for l in ledamoter}
-    rows = []
-    sedda = set()
+    # Ledamoten är redan matchad mot en person i koppla_kandidatur(), och den
+    # kopplingen får inte göras om här på namn -- då skulle de två stegen
+    # kunna välja olika personer med samma namn.
+    per_pid = {}
+    for l in ledamoter:
+        kand = l["kandidatur_2026"]
+        if kand and kand["pid"] is not None:
+            per_pid[kand["pid"]] = l
 
-    for nn, kandidaturer in kandidater.items():
-        k = kandidaturer[0]
-        l = by_norm.get(nn)
-        sedda.add(nn)
-        rows.append([
-            k["namn"],
-            k["parti"] or k["parti_full"],
-            k["ordning"],
-            "Hela landet" if k["hela_landet"] else (k["valkretsar"][0] if k["valkretsar"] else ""),
-            len(kandidaturer),
+    def ledamotsfalt(l):
+        return [
             l["id"] if l else 0,
             round(l["rostning"]["narvaro"] * 100) if l and l["rostning"]["narvaro"] else 0,
             l["parti"] if l else "",
             l["avvikelser"]["antal"] if l and l["avvikelser"]["matbar"] else 0,
-        ])
+        ]
+
+    rows = []
+    kopplade = set()
+    for personer in kandidater.values():
+        for p in personer:
+            k = p["kandidaturer"][0]
+            l = per_pid.get(p["pid"])
+            if l:
+                kopplade.add(l["id"])
+            rows.append([
+                p["namn"],
+                k["parti"] or k["parti_full"],
+                k["ordning"],
+                "Hela landet" if k["hela_landet"] else (
+                    k["valkretsar"][0] if k["valkretsar"] else ""),
+                len(p["kandidaturer"]),
+            ] + ledamotsfalt(l) + [p["pid"]])
 
     avgaende = 0
     for l in ledamoter:
-        nn = norm_namn(l["namn"])
-        if nn in sedda:
+        if l["id"] in kopplade:
             continue
         avgaende += 1
         # ordning 0 och 0 kandidaturer signalerar "kandiderar inte" i klienten
-        rows.append([
-            l["namn"], l["parti"], 0, l["valkrets"], 0, l["id"],
-            round(l["rostning"]["narvaro"] * 100) if l["rostning"]["narvaro"] else 0,
-            l["parti"],
-            l["avvikelser"]["antal"] if l["avvikelser"]["matbar"] else 0,
-        ])
+        rows.append([l["namn"], l["parti"], 0, l["valkrets"], 0]
+                    + ledamotsfalt(l) + [None])
 
     rows.sort(key=lambda r: r[0])
-    print("  sökindex: %d poster (%d kandidater + %d avgående ledamöter)"
-          % (len(rows), len(sedda), avgaende))
+    print("  sökindex: %d poster (%d kandidater + %d ledamöter utan kandidatur)"
+          % (len(rows), len(rows) - avgaende, avgaende))
     return {
         "falt": ["namn", "parti", "ordning", "valkrets", "kandidaturer",
-                 "ledamot_id", "narvaro_pct", "riksdagsparti", "avvikelser"],
+                 "ledamot_id", "narvaro_pct", "riksdagsparti", "avvikelser",
+                 "pid"],
         "rader": rows,
     }
 
@@ -1149,6 +1267,11 @@ def build_valsedlar(sedlar, val2022):
     Personrösterna från 2022 följer med per valkrets, men bara för namn som
     står på en valsedel i samma valkrets 2026 -- resten har ingen läsare här,
     och beskärningen tar bort 58 % av posterna.
+
+    Varje kandidatplats bär personens `pid`. Det är den enda kopplingen
+    klienten får använda mot sökindexet: 99 namn bärs av mer än en person,
+    och ett uppslag på namn länkade sju kandidatplatser till en helt annan
+    ledamot -- S:s Jonas Andersson i Jämtland till SD:s i Östergötland.
     """
     def sortnyckel(sed):
         # riksdagspartierna först, i mandatordning, sedan alfabetiskt
@@ -1162,18 +1285,18 @@ def build_valsedlar(sedlar, val2022):
     utan = collections.Counter()
 
     for sed in sorted(sedlar.values(), key=sortnyckel):
-        if not sed["kandidater"]:
+        if not sed["platser"]:
             continue
         if not sed["beteckning"]:
-            utan[sed["parti_full"]] += len(sed["kandidater"])
+            utan[sed["parti_full"]] += len(sed["platser"])
             continue
         # Orankade listor har ordning 0 och sorteras alfabetiskt, efter de
         # rankade -- annars hamnar de först och ser ut som listans topp.
-        kandidater = sorted(sed["kandidater"].items(),
-                            key=lambda kv: (kv[1] == 0, kv[1], kv[0]))
-        aldrar = sorted(v for v in
-                        (sed["alder"].get(n) for n, _ in kandidater) if v)
-        kvinnor = sum(1 for n, _ in kandidater if sed["kon"].get(n) == "K")
+        platser = sorted(sed["platser"].items(),
+                         key=lambda kv: (kv[1]["ordning"] == 0,
+                                         kv[1]["ordning"], kv[1]["namn"]))
+        aldrar = sorted(p["alder"] for _, p in platser if p["alder"])
+        kvinnor = sum(1 for _, p in platser if p["kon"] == "K")
         idx = len(listor)
         listor.append({
             "parti": sed["parti"],
@@ -1182,7 +1305,8 @@ def build_valsedlar(sedlar, val2022):
             "beteckning": sed["beteckning"],
             "hela_landet": len(sed["valkretsar"]) >= 29,
             "antal_valkretsar": len(sed["valkretsar"]),
-            "kandidater": [[namn, ordning] for namn, ordning in kandidater],
+            "kandidater": [[p["namn"], p["ordning"], pid]
+                           for pid, p in platser],
             "ogiltiga": sorted(sed["ogiltiga"]),
             # Listans sammansättning. Åldern är åldern på valdagen, som står
             # i källan -- inte födelseår.
@@ -1202,7 +1326,7 @@ def build_valsedlar(sedlar, val2022):
     for vk in per_valkrets:
         namn_i_vk = set()
         for idx in per_valkrets[vk]:
-            for namn, _ in listor[idx]["kandidater"]:
+            for namn, _, _ in listor[idx]["kandidater"]:
                 namn_i_vk.add(namn_nyckel(namn))
         partier = {}
         for parti, d in (val2022.get(vk) or {}).items():

@@ -4,7 +4,6 @@ import {
   formatNumber,
   joinWords,
   nameKey,
-  normalize,
   partyClass,
   percent,
 } from "../lib/format.js";
@@ -18,9 +17,12 @@ import { Note } from "../components/Note.jsx";
    Riksdag. Search assumes the reader already knows a name; this view is for
    the reader holding a ballot paper and not recognising any of them.
 
-   The candidate rows join on the normalized name against the search index,
-   which is already loaded — so the ballots file carries names and list
-   positions only, and nothing is duplicated across the two payloads. */
+   The candidate rows join on the person id against the search index, which
+   is already loaded — so the ballots file carries names, list positions and
+   that id only, and nothing is duplicated across the two payloads. The id is
+   what makes the join safe: 99 candidate names are borne by more than one
+   person, and joining on the name linked seven ballot rows to a different
+   member with the same name. */
 
 function listLabel(list) {
   return list.hela_landet ? "Hela landet" : list.beteckning;
@@ -34,12 +36,12 @@ function duplicated(lists) {
   return new Set(labels).size < labels.length;
 }
 
-function CandidateRow({ name, position, listParty, byName, crosses }) {
-  const row = byName.get(normalize(name));
+function CandidateRow({ name, position, pid, listParty, byPid, crosses }) {
+  const row = byPid.get(pid);
   const memberId = row?.memberId;
   const href = memberId
     ? `#/ledamot/${memberId}`
-    : `#/kandidat/${encodeURIComponent(name)}`;
+    : `#/kandidat/${encodeURIComponent(name)}/${pid}`;
 
   const facts = [];
   if (crosses) facts.push(`${formatNumber(crosses)} kryss 2022`);
@@ -77,10 +79,8 @@ function CandidateRow({ name, position, listParty, byName, crosses }) {
   );
 }
 
-function BallotList({ list, byName, siblings, crosses }) {
-  const sat = list.kandidater.filter(
-    ([name]) => byName.get(normalize(name))?.memberId,
-  ).length;
+function BallotList({ list, byPid, siblings, crosses }) {
+  const sat = list.kandidater.filter(([, , pid]) => byPid.get(pid)?.memberId).length;
 
   const summary = [
     `${list.kandidater.length} kandidater`,
@@ -126,13 +126,14 @@ function BallotList({ list, byName, siblings, crosses }) {
             </p>
           ) : null}
           <ul className="traffar valsedel-lista">
-            {list.kandidater.map(([name, position]) => (
+            {list.kandidater.map(([name, position, pid]) => (
               <CandidateRow
-                key={`${name}-${position}`}
+                key={pid}
                 name={name}
                 position={position}
+                pid={pid}
                 listParty={list.parti}
-                byName={byName}
+                byPid={byPid}
                 crosses={crosses?.[nameKey(name)]}
               />
             ))}
@@ -197,7 +198,7 @@ function Picker({ ballots }) {
 }
 
 function Constituency({ ballots, constituency }) {
-  const { byName } = useData();
+  const { byPid } = useData();
   useTitle(constituency);
 
   const found = ballots.valkretsar.find((v) => v.namn === constituency);
@@ -269,7 +270,7 @@ function Constituency({ ballots, constituency }) {
               <BallotList
                 key={`${list.parti_full}-${list.lista}-${list.beteckning}`}
                 list={list}
-                byName={byName}
+                byPid={byPid}
                 siblings={lists.length}
                 crosses={results2022[list.parti || list.parti_full]?.kryss}
               />
@@ -282,8 +283,10 @@ function Constituency({ ballots, constituency }) {
         {"Röstandel och avvikelser gäller mandatperioden 2022–2026 och finns bara för den " +
           "som satt i riksdagen. Personkryssen är från valet 2022 och säger inget säkert om " +
           "vad som krävs i år — listor, valkretsar och partiernas storlek ändras. " +
-          "Kopplingen mellan valsedel, ledamot och 2022-resultat sker på namn, så en " +
-          "namnkollision kan i sällsynta fall ge fel person."}
+          "Varje kandidat på listan kopplas till sin ledamot på ett löpnummer som bygget " +
+          "sätter per person, inte på namnet — 99 namn bärs av mer än en kandidat. " +
+          "Personkryssen från 2022 matchas däremot på namn och kan i sällsynta fall " +
+          "hamna på en namne."}
       </p>
       <a className="tillbaka" href="#/valsedel">
         ← Annan valkrets

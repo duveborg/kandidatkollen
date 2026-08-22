@@ -47,8 +47,9 @@ export function CandidacyCard({ member, candidacy }) {
       ) : null}
       {!candidacy.sakert_namn ? (
         <p className="hint">
-          {`Namnet förekommer på ${candidacy.antal_kandidaturer} kandidaturer och ingen av ` +
-            "dem är i hens riksdagsparti. Det kan vara en annan person med samma namn."}
+          {`${candidacy.namnar} kandidater i valet bär det här namnet, och varken ålder ` +
+            "eller parti skiljer dem åt. Kandidaturen ovan kan därför gälla en namne, och " +
+            "ingen valsedelsrad länkar hit."}
         </p>
       ) : null}
     </div>
