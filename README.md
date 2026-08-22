@@ -5,6 +5,10 @@ gjorde i riksdagen 2022–2026**. Du söker på ett namn du ser på din valsedel
 får hur personen röstade, hur ofta hen gick mot sitt eget parti, vad hen talat
 och skrivit om, vilka uppdrag hen haft — och om hen kandiderar igen.
 
+Känner du inte igen något namn går det åt andra hållet: välj din valkrets och
+gå igenom de fastställda valsedlarna lista för lista, med varje kandidats
+gärning i riksdagen intill namnet.
+
 Valkompasser mäter vad partier *säger*. Den här sajten mäter vad ledamöter
 *gjorde*, och är därför användbar för det beslut väljaren har svårast att fatta:
 personkryssen.
@@ -81,6 +85,12 @@ inget värde — annars jämförs de mot ett medelvärde av varandra, vilket gav
 absurda 15–20 % i en tidig version. Svensk partidisciplin är hård: medianen
 ligger långt under en procent, så ett par procent är anmärkningsvärt högt.
 
+Andelen räknas på de röster där ledamotens parti hade en linje att avvika från,
+inte på alla avlagda röster. För de nio ledamöter som bytte partibeteckning
+under perioden betyder det att bara tiden i partiet räknas; annars skulle
+månader som politiskt obunden späda ut talet utan att kunna innehålla en
+avvikelse. Profilen visar vilket parti talet gäller mot.
+
 **Punktrubriker är obegripliga på egen hand.** Utskottens egna rubriker på
 beslutspunkter lyder ofta "Övriga frågor", "Uppföljning" eller "Regeringens
 lagförslag". Därför bär varje voteringsrad även betänkandets titel, och går
@@ -133,13 +143,43 @@ Sakområdena räknas på vilket utskott varje anförande och motion hör till; d
 mäter var tiden lagts, inte vilken ståndpunkt som tagits. Frågor och
 interpellationer saknar utskottskoppling i datan och ingår inte där.
 
+**Valsedlarna är fastställda listor, med sina egenheter.** En nationell lista
+står i Valmyndighetens fil en gång per valkrets men är en enda valsedel och
+räknas en gång; beteckningen på sedeln (`HELA LANDET` eller valkretsens namn)
+är det som skiljer dem åt. I 33 fall har ett parti fler än en fastställd
+valsedel med samma beteckning i samma valkrets — Sverigedemokraterna i
+samtliga 29. Innehållet är nästan identiskt, men stavning och numrering
+skiljer sig, och båda är fastställda, så sajten visar båda och säger att den
+gör det.
+
+Två andra egenheter syns i listorna. Vissa listor är orankade: filen anger
+ingen ordning, och kandidaterna står då i bokstavsordning. Och 770
+kandidaturer är ogiltiga eftersom kandidaten inte lämnat förklaring — namnet
+publiceras inte, men platsen finns kvar i numreringen. Sajten redovisar de 95
+hålen i stället för att låta dem se ut som ett fel. 78 kandidater är anmälda
+utan fastställd valsedel alls; de går inte att placera på en lista och finns
+bara i sökningen.
+
+**Nio ledamöter bytte partibeteckning under perioden**, samtliga från ett parti
+till politiskt obunden. Datumen sajten visar är första och sista rösten under
+varje beteckning: voteringsdatan innehåller inga formella in- eller
+utträdesdatum, så bytet kan ha skett någon tid före den första rösten under
+den nya beteckningen. Partiet som visas är partiet på den senaste rösten i
+datumordning — voteringsfilerna ligger inte i datumordning, vilket i en tidig
+version gav fel parti för fem av de nio.
+
 **Kopplingen till valsedeln sker på namn** och kan fela i två riktningar: två
 personer med samma namn kan slås samman, och en ledamot som stavas olika i de
-två källorna kan felaktigt framstå som att hen inte kandiderar. 296 av 426
+två källorna kan felaktigt framstå som att hen inte kandiderar. 297 av 426
 ledamöter matchas. Profilsidan flaggar osäkra fall.
 
-**Sökindexet innehåller båda grupperna** — alla 6 191 kandidater i
-riksdagsvalet plus de 130 sittande ledamöter som inte kandiderar igen. Utan de
+En del av kandidaterna står i filen med efternamnet först. Sajten vänder på
+dem, annars hamnar de baklänges i sökningen och kan aldrig matcha en ledamot.
+Det var så en ledamot som såg ut att lämna riksdagen visade sig kandidera för
+ett annat parti.
+
+**Sökindexet innehåller båda grupperna** — alla 6 184 kandidater i
+riksdagsvalet plus de 129 sittande ledamöter som inte kandiderar igen. Utan de
 senare går en avgående ledamot inte att söka upp, fastän sidan *Lämnar
 riksdagen* länkar till hen.
 
@@ -164,14 +204,16 @@ site/              byggd output, enbart statiska filer
   index.html       skrivs av Vite
   assets/          skrivs av Vite
   data/            skrivs av build.py — index.json, stats.json, rum.json,
+                   valsedlar.json (hämtas vid #/valsedel),
                    voteringar.json (hämtas vid utfällning),
                    ledamot/<id>.json
 ```
 
-Sajten har fyra huvudvyer: sökningen med ledamotsprofiler, **Blockkartan** (det
-politiska rummet, enighetsmatrisen, blockens rörelse per riksmöte och de
-knappaste voteringarna), **Lämnar riksdagen** och **Om siffrorna**.
-`rum.json` laddas först när Blockkartan öppnas.
+Sajten har fem huvudvyer: sökningen med ledamotsprofiler, **Din valsedel** (de
+fastställda listorna per valkrets), **Blockkartan** (det politiska rummet,
+enighetsmatrisen, blockens rörelse per riksmöte och de knappaste voteringarna),
+**Lämnar riksdagen** och **Om siffrorna**. `rum.json` laddas först när
+Blockkartan öppnas, `valsedlar.json` först vid Din valsedel.
 
 `data/` och hela `site/` är genererade och versionshanteras inte. Inget under
 `site/` redigeras för hand.

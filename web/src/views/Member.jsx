@@ -51,26 +51,61 @@ function AgainstMedian({ member, share, medianShare }) {
   );
 }
 
+/* A member who changed party mid-period voted under two labels, and every
+   party-relative number on the page refers to the one they held at the time.
+   The dates are first and last vote under each label — the voting data holds
+   no formal date of leaving a party. */
+function PartyChange({ member }) {
+  const steps = member.partier_i_perioden;
+  if (!steps?.length) return null;
+
+  const last = steps[steps.length - 1];
+  const path = steps.map((step) => partyName(step.parti)).join(" → ");
+
+  return (
+    <Note heading="Bytte partibeteckning under mandatperioden. ">
+      {`${path}. Hen röstade sista gången som ${partyName(steps[0].parti)} ` +
+        `${steps[0].sista_rost} och första gången som ${partyName(last.parti)} ` +
+        `${last.forsta_rost}. Avvikelser från partilinjen nedan gäller tiden i partiet — ` +
+        "efter bytet finns ingen partilinje att avvika från. Datumen är röstdatum, inte " +
+        "formella utträdesdatum, som riksdagens voteringsdata inte innehåller."}
+    </Note>
+  );
+}
+
 function Deviations({ member, stats }) {
   const deviations = member.avvikelser;
 
   if (!deviations.matbar) {
     return (
       <p className="tom">
-        {`${member.namn} är politiskt obunden och har inget parti att avvika från, så ` +
-          "måttet går inte att beräkna."}
+        {`${member.namn} har inte röstat under någon partibeteckning med en partilinje att ` +
+          "avvika från, så måttet går inte att beräkna."}
       </p>
     );
   }
+
+  /* Measured against the party the member voted with. For someone who has
+     left their party that is no longer the current one, so the median to
+     compare against is the former party's. */
+  const against = deviations.mot_parti;
+  const switched = against !== member.parti;
 
   return (
     <>
       <StatRow>
         <Stat value={formatNumber(deviations.antal)} label="gånger mot partilinjen" />
-        <Stat value={percent(deviations.andel, 2)} label="av sina röster" />
         <Stat
-          value={percent((stats.per_parti[member.parti] || {}).avvikelse_median, 2)}
-          label={`median i ${member.parti}`}
+          value={percent(deviations.andel, 2)}
+          label={
+            switched
+              ? `av ${formatNumber(deviations.av_roster)} röster som ${against}`
+              : "av sina röster"
+          }
+        />
+        <Stat
+          value={percent((stats.per_parti[against] || {}).avvikelse_median, 2)}
+          label={`median i ${against}`}
         />
       </StatRow>
       {deviations.exempel.length ? (
@@ -151,6 +186,8 @@ export function Member({ id }) {
           </div>
         </div>
       </div>
+
+      <PartyChange member={member} />
 
       <CandidacyCard member={member} candidacy={member.kandidatur_2026} />
 

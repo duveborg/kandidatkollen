@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useData } from "../lib/data.js";
-import { formatNumber, normalize } from "../lib/format.js";
+import { formatNumber, normalize, partyClass, shortConstituency } from "../lib/format.js";
+import { partyName } from "../lib/constants.js";
 import { useTitle } from "../lib/useTitle.js";
 import { search } from "../lib/search.js";
 import { HitRow } from "../components/HitRow.jsx";
@@ -50,11 +51,26 @@ export function Home() {
         />
       </div>
       <p className="hint">{status}</p>
-      <ul className="traffar">
+      <ul className="traffar sokresultat">
         {hits.map((row) => (
           <HitRow key={row.memberId || `${row.name}-${row.party}-${row.constituency}`} row={row} />
         ))}
       </ul>
+
+      {/* Searching presumes the reader recognises a name. Most do not, so the
+          ballot view is offered before the aggregate numbers, not after. */}
+      {tooShort ? (
+        <div className="kort">
+          <h2>Känner du inte igen något namn?</h2>
+          <p>
+            {"Välj din valkrets och gå igenom valsedlarna som ligger i valbåset, lista för " +
+              "lista, med varje kandidats röstning i riksdagen intill namnet."}
+          </p>
+          <p className="hint">
+            <a href="#/valsedel">Öppna din valsedel →</a>
+          </p>
+        </div>
+      ) : null}
 
       <h2>Riksdagen 2022–2026 i siffror</h2>
       <StatRow>
@@ -72,6 +88,43 @@ export function Home() {
       <p className="hint">
         <a href="#/lamnar">Se vilka som lämnar riksdagen →</a>
       </p>
+
+      {stats.partibytare?.length ? (
+        <>
+          <h2>{`${stats.partibytare.length} bytte partibeteckning under perioden`}</h2>
+          <p className="hint">
+            {"Ledamoten valdes in för ett parti och röstade sedan under en annan " +
+              "beteckning. Datumet är den första rösten under den nya beteckningen — " +
+              "riksdagens voteringsdata innehåller inga formella utträdesdatum."}
+          </p>
+          <ul className="traffar partibytare">
+            {stats.partibytare.map((member) => {
+              const from = member.steg[0];
+              const to = member.steg[member.steg.length - 1];
+              return (
+                /* coloured by the party they left, which is what makes the
+                   list scannable — every one of them ended up independent */
+                <li key={member.id} className={partyClass(from.parti)}>
+                  <a href={`#/ledamot/${member.id}`}>
+                    <span className="flagga" />
+                    <span>
+                      <div className="traff-namn">{member.namn}</div>
+                      <div className="traff-meta">
+                        {`${partyName(from.parti)} → ${partyName(to.parti)} · ` +
+                          shortConstituency(member.valkrets)}
+                      </div>
+                    </span>
+                    <span className="traff-hoger">
+                      <div className="traff-meta">{`från ${to.forsta_rost}`}</div>
+                      <div className="traff-meta">{`${to.roster} röster efter bytet`}</div>
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : null}
 
       <h2>Hela riksdagen på en karta</h2>
       <div className="kort">

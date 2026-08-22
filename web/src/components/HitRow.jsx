@@ -1,15 +1,8 @@
 import { partyClass, shortConstituency } from "../lib/format.js";
 import { partyName } from "../lib/constants.js";
+import { CandidateBadge } from "./CandidateBadge.jsx";
 
-/* One search hit. Three cases the reader needs to tell apart: a sitting
-   member running again, a sitting member leaving, and a new candidate with no
-   record in the Riksdag. */
-function badge({ memberId, candidacies }) {
-  if (memberId && candidacies) return <span className="pill har">satt i riksdagen</span>;
-  if (memberId) return <span className="pill">lämnar riksdagen</span>;
-  return <span className="pill utan">ny kandidat</span>;
-}
-
+/* One search hit. */
 export function HitRow({ row }) {
   const meta = [
     row.party ? partyName(row.party) : null,
@@ -30,7 +23,7 @@ export function HitRow({ row }) {
           <div className="traff-meta">{meta.join(" · ")}</div>
         </span>
         <span className="traff-hoger">
-          {badge(row)}
+          <CandidateBadge memberId={row.memberId} candidacies={row.candidacies} />
           {row.memberId && row.votePercent ? (
             <div className="traff-meta">{`röstade i ${row.votePercent} % av voteringarna`}</div>
           ) : null}

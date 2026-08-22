@@ -34,7 +34,8 @@ och versionshanteras inte — inget under `site/` redigeras för hand.
 - **Frontend är React 19 + Vite** i `web/`. Byggsteg finns, så modern JS är
   fritt. Men inga UI-ramverk eller routerbibliotek utöver React: routern är
   30 rader i `App.jsx`, och hashadresserna (`#/ledamot/<id>`, `#/block`,
-  `#/lamnar`, `#/om`, `#/kandidat/<namn>`) är publicerade och får inte ändras.
+  `#/lamnar`, `#/om`, `#/kandidat/<namn>`, `#/valsedel`,
+  `#/valsedel/<valkrets>`) är publicerade och får inte ändras.
 - **Engelska identifierare** i `web/` och `test/` — variabler, funktioner,
   komponenter, filnamn och kommentarer. Riksdagstermer som namnger något i
   datan behålls som de är: `votering`, `valkrets`, `riksmöte`, `betänkande`.
@@ -59,10 +60,15 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | `fr` och `ip` | Förekommer i **två roller**. `undertecknare` är ledamoten som frågar, `besvaradav` är statsrådet som svarar. Räkna bara undertecknare, annars tillskrivs frågorna ministern. `frs` (svaret) räknas inte alls. |
 | `forslag` i XML | **Dubbelkodad HTML.** Parsern avkodar `&amp;auml;` till `&auml;`; `stada_text()` kör `html.unescape` två gånger. Använd den funktionen på all text som ska visas. |
 | `kandidaturer.csv` | **Semikolonseparerad**, till skillnad från övriga. `ORDNING` kan vara blank för orankade listor — `as_int()` finns för det. |
-| Nationella listor | En kandidatur replikeras över alla 29 valkretsar. Nyckeln är `(namn, parti, listnummer)`; ≥29 valkretsar betyder "Hela landet". |
+| Nationella listor | En kandidatur replikeras över alla 29 valkretsar. Nyckeln är `(namn, parti, listnummer)`; ≥29 valkretsar betyder "Hela landet". Valsedelns identitet är i stället `(parti, listnummer, VALKRETSBETECKNING PÅ VALSEDELN)` — beteckningen `HELA LANDET` är det som skiljer en nationell sedel från en valkretssedel. |
+| `NAMN` i kandidaturfilen | 2 262 rader står som **"Efternamn, Förnamn"**, resten omvänt. Det är gruppen utan fastställd valsedel — 75 personer, replikerade över 29 valkretsar. `flip_namn()` vänder dem; utan den hamnar de baklänges i sökindexet och kan aldrig matcha en ledamot. Det var så Katja Nybergs kandidatur för Valsamverkanspartiet var osynlig. Ett namn har i stället ett efterhängande komma och står redan rätt — vänd inte på det. |
+| `GILTIG` i kandidaturfilen | 770 kandidaturer har `GILTIG=N` — kandidaten har inte lämnat förklaring, och `NAMN` är då maskerat till strängen "inte lämnat förklaring". Platsen finns kvar i numreringen, så listan får **hål** (upp till 7 på en lista). Filtrera bort dem från kandidater men behåll positionen i `ogiltiga`, annars ser hålet ut som en bugg. |
+| Dubbla valsedlar | 33 fall där ett parti har **fler än en fastställd valsedel med samma beteckning** i samma valkrets — SD i alla 29. Innehållet är nästan identiskt men stavning och numrering skiljer ("Helena Ståhl" mot "Helena Stål"). Slå inte samman dem: båda är fastställda. Gränssnittet noterar bara fallet när beteckningen är densamma; en valkretslista plus en nationell lista är två olika sedlar. |
 | Uppdragsperioder | Förra periodens uppdrag slutar **exakt** på dagen den nya börjar. `overlappar()` kräver därför `tom > PERIOD_START`, inte `>=`. |
 | Statsråd | Sittande statsråd förekommer **inte alls** i voteringsdatan. De 14 som gör det är avgångna statsråd som blivit vanliga ledamöter. |
-| 130 mot 127 | 130 ledamöter saknar kandidatur och ligger i sökindexet, men `lamnar_riksdagen` har 127: listan kräver >100 mätbara voteringar. Paulina Brandberg, Mats Nordberg och Annie Lööf faller bort. Båda talen är riktiga — förväxla dem inte. |
+| Aktuellt parti | Voteringsraderna ligger **inte i datumordning**. "Senaste raden vinner" gav fel parti för fem av de nio som bytte beteckning under perioden — och därmed fel partifärg, fel medianjämförelse och fel `matbar`. Läs alltid ut partiet kronologiskt ur `_partitid`. |
+| Avvikelsenämnaren | `avvikelser.andel` räknas på `av_roster` = röster där ledamotens parti **hade en linje**, inte på alla avlagda röster. För den som lämnat sitt parti är skillnaden hela den obundna perioden, där ingen avvikelse är möjlig. `mot_parti` bär partiet avvikelserna mättes mot, och är inte alltid det aktuella. |
+| 129 mot 126 | 129 ledamöter saknar kandidatur och ligger i sökindexet, men `lamnar_riksdagen` har 126: listan kräver >100 mätbara voteringar. Paulina Brandberg, Mats Nordberg och Annie Lööf faller bort. Båda talen är riktiga — förväxla dem inte. |
 | Utskottsforslag | 894 betänkanden efterfrågas, 854 ger användbart svar. `load_amnen()` hoppar över filer <200 B, och 3 refererade voteringar saknar därför utskottsförslag. Gränssnittet måste tåla det. |
 
 ## Redaktionella regler som inte får brytas
@@ -74,11 +80,22 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
   omfattning, och de tre lägsta andelarna i perioden tillhör partiledare.
   Visa alltid medianen intill siffran, och behåll kvittningsnoten som slår in
   automatiskt >5 procentenheter under medianen.
+- **Kvittningsfällan gäller varje frånvarobaserat mått**, inte bara
+  röstandelen. Verifierat på de knappa voteringarna: medianledamoten missade
+  14 av 157, men toppen är Jimmie Åkesson 105, Magdalena Andersson 66 och
+  Nooshi Dadgostar 43. "Missade avgörande voteringar" som lista blir alltså
+  en partiledarlista igen. Som profilsiffra med medianen intill går det bra;
+  som rangordning gör det inte det.
 - **Hitta inte på partiledaretiketter.** `partiuppdrag` saknar rollen
   systematiskt för S, M, SD, V och KD. Visa verifierbara fakta i stället
   (Utrikesnämnden, Krigsdelegationen) och låt läsaren tolka.
 - **Politiskt obundna får ingen partiavvikelse.** Utan den regeln jämförs de
-  mot ett medelvärde av varandra, vilket gav absurda 15–20 %.
+  mot ett medelvärde av varandra, vilket gav absurda 15–20 %. Skyddet sitter i
+  `partilinjer()`, som bara räknar `RIKSDAGSPARTIER` — inte i `matbar`. Den som
+  bytt beteckning under perioden får därför sina avvikelser mätta mot tiden i
+  partiet, med `mot_parti` och `av_roster` intill talet, och profilen säger
+  det i klartext. Alla nio bytare gick från parti till obunden, så ingen
+  ledamot i perioden saknar helt en partilinje.
 - **PCA:n kräver 60 % deltagande.** Utebliven röst kodas som 0 och drar
   lågröstande mot mitten; utan filtret framstod Jimmie Åkesson (14 %) som
   SD:s största avvikare. Filtret utesluter exakt två ledamöter, som namnges
@@ -105,20 +122,26 @@ web/src/main.jsx     monterar App
 web/src/App.jsx      hash-router, header, footer, laddning av basdata
 web/src/lib/         format, constants, data (fetch + context + useFetch),
                      search, useTitle
-web/src/components/  Stat, Note, HitRow, Vote, CandidacyCard,
+web/src/components/  Stat, Note, HitRow, CandidateBadge, Vote, CandidacyCard,
                      ActivitySection, charts/{HeatTable, Timeline,
                      PoliticalSpace, labels}
-web/src/views/       Home, Member, Candidate, Leaving, BlockMap, About
+web/src/views/       Home, Member, Candidate, Ballot, Leaving, BlockMap, About
 web/src/style.css    ljust/mörkt via prefers-color-scheme, --parti per parti
 test/smoke.mjs       Playwright-rökprov över alla vyer
 site/                enbart byggd output
-site/data/           index.json + stats.json laddas direkt;
-                     rum.json vid #/block; voteringar.json vid utfällning
+site/data/           index.json + stats.json laddas direkt; rum.json vid
+                     #/block; valsedlar.json vid #/valsedel; voteringar.json
+                     vid utfällning
 ```
 
 `index.json` skickas packat (`falt` + positionsrader) och packas upp till
 namngivna fält i `lib/data.js`. Det normaliserade namnet räknas ut en gång vid
-laddning, så sökningen slipper normalisera 6 321 namn per tangenttryck.
+laddning, så sökningen slipper normalisera 6 313 namn per tangenttryck.
+
+`valsedlar.json` bär bara namn och listplats. Valsedelvyn slår upp resten mot
+det redan laddade sökindexet på normaliserat namn — därför ligger
+`riksdagsparti` och `avvikelser` i `index.json`, och inget dupliceras mellan
+filerna. 426 uppslag mot `ledamot/*.json` vore orimligt.
 
 Nya mått hör i `build.py` och hamnar i `stats.json` eller ledamotsposten.
 Lägg inte tunga fält i `ledamot/*.json` — de är 426 filer; långa texter hör i
@@ -127,8 +150,9 @@ Lägg inte tunga fält i `ledamot/*.json` — de är 426 filer; långa texter h�
 ## Verifiering
 
 Frontend har ett rökprov. `npm run bygg && npm run rokprov` startar en statisk
-server mot `site/`, går igenom alla sex vyer i Chromium, söker, öppnar en
-ledamot, fäller ut voteringar på både profil och blockkarta, och felar på
+server mot `site/`, går igenom alla sju vyer i Chromium, söker, öppnar en
+ledamot, fäller ut voteringar på både profil och blockkarta, fäller ut en
+valsedel och kontrollerar att raderna kopplas till ledamöter, och felar på
 konsolfel, HTTP-status ≥400, HTML-entiteter i renderad text och horisontell
 scroll vid 390 px. Kör det efter varje ändring i `web/`. Det ersätter inte en
 egen titt i webbläsaren vid layoutändringar, men det fångar det som tidigare
@@ -142,10 +166,16 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 |---|---|
 | voteringar (sakfrågan) | 2 571 |
 | avlagda röster | 897 279 |
-| ledamöter | 426, varav 296 med kandidatur 2026 |
-| sökindex | 6 321 poster (6 191 kandidater + 130 avgående) |
+| ledamöter | 426, varav 297 med kandidatur 2026 |
+| sökindex | 6 313 poster (6 184 kandidater + 129 avgående) |
 | median röstandel | 87,6 % bland 364 heltidsledamöter |
 | flest partiavvikelser | 26 av 2 100 röster, 1,24 % (Leila Ali Elmi, MP) |
-| knappa voteringar (≤10) | 157 |
+| knappa voteringar (≤10) | 157, medianledamoten missade 14 |
 | PCA | 362 ledamöter, 43 % + 14 % förklarad varians |
 | aktivitetsposter | 113 190 |
+| valsedlar | 285 i 29 valkretsar, 10 521 kandidatplatser, 95 ogiltiga |
+| partibytare | 9, samtliga från parti till politiskt obunden |
+
+Ändras siffran för sökindex eller kandidatur 2026 är `flip_namn()` det första
+att titta på: den slår ihop namn som stod baklänges, och en sammanslagning
+flyttar en post från "avgående" till "kandiderar".

@@ -20,6 +20,10 @@ function unpackIndex(index) {
     candidacies: r[4],
     memberId: r[5],
     votePercent: r[6],
+    // the party they voted with in the Riksdag, which is not always the party
+    // whose ballot they stand on
+    partyInRiksdag: r[7],
+    deviations: r[8],
     searchName: normalize(r[0]),
   }));
 }
@@ -45,6 +49,21 @@ export function loadVotes() {
     });
   }
   return votesPromise;
+}
+
+/* valsedlar.json is only needed for the ballot view. The candidate rows there
+   join against the already-loaded search index, so this file carries names and
+   list positions only. */
+let ballotsPromise = null;
+
+export function loadBallots() {
+  if (!ballotsPromise) {
+    ballotsPromise = fetchJson("data/valsedlar.json").catch((err) => {
+      ballotsPromise = null;
+      throw err;
+    });
+  }
+  return ballotsPromise;
 }
 
 /* rum.json is only needed for the block map. */

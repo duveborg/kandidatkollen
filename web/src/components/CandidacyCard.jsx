@@ -36,9 +36,13 @@ export function CandidacyCard({ member, candidacy }) {
         <p className="hint">{`På valsedeln: ”${candidacy.uppgift}”`}</p>
       ) : null}
       {candidacy.partibyte ? (
-        <Note heading="Byte av parti. ">
-          {`Hen röstade senast för ${partyName(member.parti)} i riksdagen men kandiderar nu ` +
-            `för ${candidacy.parti_full || candidacy.parti}.`}
+        <Note heading="Kandiderar för ett annat parti. ">
+          {(member.parti === "-"
+            ? "Hen röstade senast som politiskt obunden i riksdagen"
+            : `Hen röstade senast för ${partyName(member.parti)} i riksdagen`) +
+            ` men står nu på ${candidacy.parti_full || candidacy.parti}s lista. ` +
+            "Kopplingen görs på namn, så kontrollera gärna mot partiets egen lista att " +
+            "det är samma person."}
         </Note>
       ) : null}
       {!candidacy.sakert_namn ? (

@@ -364,32 +364,83 @@ def summera_aktivitet(a):
     }
 
 
+def flip_namn(s):
+    """"Efternamn, Förnamn" -> "Förnamn Efternamn", och bort med skräpkommat.
+
+    2 262 rader i kandidaturfilen står med efternamnet först, till skillnad
+    från de övriga 30 649. Det är gruppen utan fastställd valsedel, 75
+    personer. Utan den här vändningen hamnar de baklänges i sökträffarna och
+    kan aldrig matcha en ledamot. Ett namn har dessutom ett efterhängande
+    komma och står redan rätt -- det ska inte vändas, bara städas.
+    """
+    s = (s or "").strip().rstrip(",").strip()
+    m = re.match(r"^([^,]+),\s+([^,]+)$", s)
+    return "%s %s" % (m.group(2).strip(), m.group(1).strip()) if m else s
+
+
 def load_kandidater():
-    """Normaliserat namn -> lista av kandidaturer i riksdagsvalet 2026."""
+    """Kandidaturerna i riksdagsvalet 2026, i två vyer av samma rader.
+
+    Returnerar (per_namn, sedlar). Den första nycklas på normaliserat namn
+    och kopplar en ledamot till valsedeln. Den andra är valsedlarna som de
+    faktiskt ser ut, nycklade på (parti, listnummer, valkretsbeteckning) --
+    en nationell lista replikeras över alla 29 valkretsar i källan men är en
+    enda valsedel, och beteckningen är det som skiljer dem åt.
+    """
     path = os.path.join(RAW, "kandidaturer.csv")
+    acc = {}      # (namn, parti, listnummer) -> kandidatur, valkretsar samlas
+    sedlar = {}   # (parti, listnummer, beteckning) -> valsedel
     with open(path, encoding="utf-8-sig") as f:
         rows = csv.reader(f, delimiter=";")
         hdr = next(rows)
-        # (namn, parti, listnummer) -> kandidatur, valkretsar samlas
-        acc = {}
         for r in rows:
             if not r or len(r) != len(hdr):
                 continue
             d = dict(zip(hdr, r))
-            if d["VALTYP"] != "RD" or d["GILTIG"] != "J":
+            if d["VALTYP"] != "RD":
                 continue
-            key = (d["NAMN"].strip(), d["PARTIBETECKNING"].strip(), d["LISTNUMMER"])
+            namn = flip_namn(d["NAMN"])
+            parti_full = d["PARTIBETECKNING"].strip()
+            lista = d["LISTNUMMER"].strip()
+            beteckning = d["VALKRETSBETECKNING PÅ VALSEDELN"].strip()
+            ordning = as_int(d["ORDNING"])
+
+            skey = (parti_full, lista, beteckning)
+            sed = sedlar.get(skey)
+            if sed is None:
+                sed = sedlar[skey] = {
+                    "parti": PARTI_ALIAS.get(parti_full),
+                    "parti_full": parti_full,
+                    "lista": lista,
+                    "beteckning": beteckning,
+                    "valkretsar": set(),
+                    "kandidater": {},
+                    "ogiltiga": set(),
+                }
+            sed["valkretsar"].add(d["VALKRETSNAMN"])
+
+            # 770 kandidaturer är ogiltiga eftersom kandidaten inte lämnat
+            # förklaring. Namnet är då maskerat i källan, men platsen finns
+            # kvar i numreringen -- den blir ett hål i listan som annars ser
+            # ut som ett fel i bygget.
+            if d["GILTIG"] != "J":
+                if ordning:
+                    sed["ogiltiga"].add(ordning)
+                continue
+            sed["kandidater"][namn] = ordning
+
+            key = (namn, parti_full, lista)
             a = acc.get(key)
             if a is None:
                 a = acc[key] = {
-                    "namn": d["NAMN"].strip(),
-                    "parti_full": d["PARTIBETECKNING"].strip(),
-                    "parti": PARTI_ALIAS.get(d["PARTIBETECKNING"].strip()),
-                    "lista": d["LISTNUMMER"],
-                    "ordning": as_int(d["ORDNING"]),
+                    "namn": namn,
+                    "parti_full": parti_full,
+                    "parti": PARTI_ALIAS.get(parti_full),
+                    "lista": lista,
+                    "ordning": ordning,
                     "alder": d["ÅLDER_PÅ_VALDAGEN"],
                     "kon": d["KÖN"],
-                    "kommun": d["FOLKBOKFÖRINGSKOMMUN"],
+                    "kommun": d["FOLKBOKFÖRINGSKOMMUN"].strip(),
                     "uppgift": d["VALSEDELSUPPGIFT"].strip(),
                     "valkretsar": [],
                 }
@@ -403,9 +454,9 @@ def load_kandidater():
         byname[norm_namn(a["namn"])].append(a)
     for lst in byname.values():
         lst.sort(key=lambda a: a["ordning"])
-    print("  %d kandidaturer, %d unika namn (riksdagsvalet)"
-          % (len(acc), len(byname)))
-    return byname
+    print("  %d kandidaturer, %d unika namn, %d valsedlar (riksdagsvalet)"
+          % (len(acc), len(byname), len(sedlar)))
+    return byname, sedlar
 
 
 # ---------------------------------------------------------------- beräkning
@@ -447,13 +498,23 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
                 "_rost": collections.Counter(),
                 "_rost_rm": collections.defaultdict(collections.Counter),
                 "_avvikelser": [],
-                "_deltog": 0, "_mojliga": 0,
-                "_partier": collections.Counter(),
+                "_deltog": 0, "_mojliga": 0, "_med_linje": 0,
+                "_partitid": {},
             }
-        # partibyten under perioden: senaste raden vinner, men vi minns alla
-        rec["parti"] = d["parti"]
         rec["valkrets"] = d["valkrets"] or rec["valkrets"]
-        rec["_partier"][d["parti"]] += 1
+        # Partibyten under perioden. Raderna ligger inte i datumordning, så
+        # partiet måste läsas ut kronologiskt -- inte som "senaste raden
+        # vinner", vilket gav fel aktuellt parti för fem av de nio som bytte.
+        dag = d["datum"][:10]
+        spann = rec["_partitid"].get(d["parti"])
+        if spann is None:
+            rec["_partitid"][d["parti"]] = [dag, dag, 1]
+        else:
+            if dag < spann[0]:
+                spann[0] = dag
+            if dag > spann[1]:
+                spann[1] = dag
+            spann[2] += 1
 
         rec["_mojliga"] += 1
         rec["_rost"][d["rost"]] += 1
@@ -462,6 +523,10 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
         if d["rost"] in ("Ja", "Nej", "Avstår"):
             rec["_deltog"] += 1
             linje = linjer.get(d["votering_id"], {}).get(d["parti"])
+            # Nämnaren för avvikelseandelen: bara röster där ledamotens parti
+            # faktiskt hade en linje att avvika från.
+            if linje:
+                rec["_med_linje"] += 1
             if linje and d["rost"] != linje:
                 a = amnen.get(d["votering_id"].lower(), {})
                 rec["_avvikelser"].append({
@@ -483,6 +548,15 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
         mojliga, deltog = r["_mojliga"], r["_deltog"]
         avv = sorted(r["_avvikelser"], key=lambda a: a["datum"], reverse=True)
 
+        # Aktuellt parti = partiet på den senaste rösten, i datumordning.
+        spann = sorted(r["_partitid"].items(), key=lambda kv: kv[1][0])
+        r["parti"] = spann[-1][0] if spann else ""
+        # Avvikelserna mättes mot det riksdagsparti hen röstade med. För den
+        # som lämnat sitt parti är det inte längre det aktuella partiet, och
+        # medianen att jämföra mot är det gamla partiets.
+        med_parti = [p for p, _ in spann if p in RIKSDAGSPARTIER]
+        mot_parti = med_parti[-1] if med_parti else None
+
         kand = koppla_kandidatur(r, kandidater)
 
         utskott = sorted(info.get("utskott", []),
@@ -503,8 +577,11 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
                             "from": s["from"], "tom": s["tom"]})
         kontext.sort(key=lambda k: k["from"], reverse=True)
 
-        # partier ledamoten röstat för under perioden, vanligast först
-        partier = [p for p, _ in r["_partier"].most_common()]
+        # Partier ledamoten röstat för, i kronologisk ordning. Datumen är
+        # första och sista rösten under partibeteckningen -- inte formella
+        # in- och utträdesdatum, som datan inte innehåller.
+        partier = [{"parti": p, "forsta_rost": a, "sista_rost": b, "roster": n}
+                   for p, (a, b, n) in spann]
 
         out.append({
             "id": iid,
@@ -534,9 +611,13 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
             },
             "avvikelser": {
                 "antal": len(avv),
-                "andel": round(len(avv) / deltog, 5) if deltog else None,
-                # obundna ledamöter har ingen partilinje att avvika från
-                "matbar": r["parti"] in RIKSDAGSPARTIER,
+                "av_roster": r["_med_linje"],
+                "andel": (round(len(avv) / r["_med_linje"], 5)
+                          if r["_med_linje"] else None),
+                # Obundna ledamöter har ingen partilinje att avvika från. Den
+                # som bytt parti under perioden har det för sin tid i partiet.
+                "matbar": bool(mot_parti),
+                "mot_parti": mot_parti,
                 "exempel": [a for a in avv if a["rubrik"]][:12],
             },
             "kandidatur_2026": kand,
@@ -566,7 +647,9 @@ def koppla_kandidatur(rec, kandidater):
         "parti": k["parti"], "parti_full": k["parti_full"],
         "ordning": k["ordning"], "valkretsar": k["valkretsar"],
         "hela_landet": k["hela_landet"], "uppgift": k["uppgift"],
-        "partibyte": bool(k["parti"]) and k["parti"] != rec["parti"],
+        # Byte räknas även mot ett parti utanför riksdagen, och för den som
+        # lämnat sitt parti under perioden är varje kandidatur ett byte.
+        "partibyte": (k["parti"] or None) != (rec["parti"] or None),
         "antal_kandidaturer": len(matches),
         "sakert_namn": len(matches) == 1 or bool(same),
     }
@@ -767,7 +850,8 @@ def build_index(ledamoter, kandidater):
     "Lämnar riksdagen" länkar till hen.
 
     Kompakt array-format för att hålla filen liten; den laddas av alla
-    besökare.
+    besökare. Ledamotsfälten står med eftersom valsedelvyn behöver dem för
+    varje namn på en lista, och 426 uppslag mot ledamot/*.json vore orimligt.
     """
     by_norm = {norm_namn(l["namn"]): l for l in ledamoter}
     rows = []
@@ -785,6 +869,8 @@ def build_index(ledamoter, kandidater):
             len(kandidaturer),
             l["id"] if l else 0,
             round(l["rostning"]["narvaro"] * 100) if l and l["rostning"]["narvaro"] else 0,
+            l["parti"] if l else "",
+            l["avvikelser"]["antal"] if l and l["avvikelser"]["matbar"] else 0,
         ])
 
     avgaende = 0
@@ -797,6 +883,8 @@ def build_index(ledamoter, kandidater):
         rows.append([
             l["namn"], l["parti"], 0, l["valkrets"], 0, l["id"],
             round(l["rostning"]["narvaro"] * 100) if l["rostning"]["narvaro"] else 0,
+            l["parti"],
+            l["avvikelser"]["antal"] if l["avvikelser"]["matbar"] else 0,
         ])
 
     rows.sort(key=lambda r: r[0])
@@ -804,8 +892,73 @@ def build_index(ledamoter, kandidater):
           % (len(rows), len(sedda), avgaende))
     return {
         "falt": ["namn", "parti", "ordning", "valkrets", "kandidaturer",
-                 "ledamot_id", "narvaro_pct"],
+                 "ledamot_id", "narvaro_pct", "riksdagsparti", "avvikelser"],
         "rader": rows,
+    }
+
+
+def build_valsedlar(sedlar):
+    """Valsedlarna per valkrets, som de ser ut i röstningsbåset.
+
+    En nationell lista står i källan en gång per valkrets men är en enda
+    valsedel; den läggs in en gång och pekas ut från varje valkrets den
+    gäller i. Beteckningen på valsedeln avgör vilket det är -- "HELA LANDET"
+    eller valkretsens namn -- och en handfull beteckningar täcker flera
+    valkretsar.
+
+    Rader utan beteckning är anmälda kandidater utan fastställd valsedel.
+    De går inte att placera på en lista och redovisas separat i stället för
+    att tigande försvinna.
+    """
+    def sortnyckel(sed):
+        # riksdagspartierna först, i mandatordning, sedan alfabetiskt
+        p = sed["parti"]
+        i = (RIKSDAGSPARTIER.index(p) if p in RIKSDAGSPARTIER
+             else len(RIKSDAGSPARTIER))
+        return (i, sed["parti_full"], sed["lista"])
+
+    listor = []
+    per_valkrets = collections.defaultdict(list)
+    utan = collections.Counter()
+
+    for sed in sorted(sedlar.values(), key=sortnyckel):
+        if not sed["kandidater"]:
+            continue
+        if not sed["beteckning"]:
+            utan[sed["parti_full"]] += len(sed["kandidater"])
+            continue
+        # Orankade listor har ordning 0 och sorteras alfabetiskt, efter de
+        # rankade -- annars hamnar de först och ser ut som listans topp.
+        kandidater = sorted(sed["kandidater"].items(),
+                            key=lambda kv: (kv[1] == 0, kv[1], kv[0]))
+        idx = len(listor)
+        listor.append({
+            "parti": sed["parti"],
+            "parti_full": sed["parti_full"],
+            "lista": sed["lista"],
+            "beteckning": sed["beteckning"],
+            "hela_landet": len(sed["valkretsar"]) >= 29,
+            "antal_valkretsar": len(sed["valkretsar"]),
+            "kandidater": [[namn, ordning] for namn, ordning in kandidater],
+            "ogiltiga": sorted(sed["ogiltiga"]),
+        })
+        for vk in sed["valkretsar"]:
+            per_valkrets[vk].append(idx)
+
+    valkretsar = [{"namn": vk, "listor": per_valkrets[vk]}
+                  for vk in sorted(per_valkrets)]
+    print("  %d valsedlar i %d valkretsar, %d kandidatplatser, %d ogiltiga platser"
+          % (len(listor), len(valkretsar),
+             sum(len(l["kandidater"]) for l in listor),
+             sum(len(l["ogiltiga"]) for l in listor)))
+    if utan:
+        print("  %d kandidater utan fastställd valsedel, %d partier"
+              % (sum(utan.values()), len(utan)))
+    return {
+        "valkretsar": valkretsar,
+        "listor": listor,
+        "utan_valsedel": [{"parti_full": p, "antal": n}
+                          for p, n in sorted(utan.items())],
     }
 
 
@@ -854,6 +1007,14 @@ def build_stats(votes, linjer, amnen, ledamoter):
               for l in ledamoter
               if not l["kandidatur_2026"] and l["rostning"]["mojliga"] > 100]
     lamnar.sort(key=lambda x: (x["parti"], x["namn"]))
+
+    # Ledamöter som röstat under mer än en partibeteckning under perioden.
+    # Datumet är första rösten under den nya beteckningen, inte ett formellt
+    # utträdesdatum -- sådana finns inte i voteringsdatan.
+    bytare = [{"namn": l["namn"], "id": l["id"], "parti": l["parti"],
+               "valkrets": l["valkrets"], "steg": l["partier_i_perioden"]}
+              for l in ledamoter if l["partier_i_perioden"]]
+    bytare.sort(key=lambda x: x["steg"][-1]["forsta_rost"], reverse=True)
 
     # Referensvärden. Sajten visar medianen intill varje ledamots siffra,
     # eftersom en röstandel utan jämförelsepunkt inbjuder till feltolkning.
@@ -906,6 +1067,7 @@ def build_stats(votes, linjer, amnen, ledamoter):
         "knappa_voteringar": knappa[:60],
         "antal_knappa": len(knappa),
         "lamnar_riksdagen": lamnar,
+        "partibytare": bytare,
     }
 
 
@@ -920,7 +1082,7 @@ def main():
     print("läser uppdrag:")
     personinfo = load_uppdrag()
     print("läser kandidater:")
-    kandidater = load_kandidater()
+    kandidater, sedlar = load_kandidater()
     print("läser sagt och gjort:")
     aktivitet = load_aktivitet()
 
@@ -934,6 +1096,9 @@ def main():
 
     print("bygger sökindex:")
     index = build_index(ledamoter, kandidater)
+
+    print("bygger valsedlar:")
+    valsedlar = build_valsedlar(sedlar)
 
     print("bygger statistik:")
     stats = build_stats(votes, linjer, amnen, ledamoter)
@@ -960,6 +1125,8 @@ def main():
         print("  rum.json    %.0f kB" % (n / 1024))
     n = dump("voteringar.json", voteringar)
     print("  voteringar.json  %.0f kB" % (n / 1024))
+    n = dump("valsedlar.json", valsedlar)
+    print("  valsedlar.json  %.0f kB" % (n / 1024))
 
     ldir = os.path.join(OUT, "ledamot")
     os.makedirs(ldir, exist_ok=True)

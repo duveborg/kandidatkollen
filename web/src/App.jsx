@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DataProvider, loadBaseData, useData } from "./lib/data.js";
 import { About } from "./views/About.jsx";
+import { Ballot } from "./views/Ballot.jsx";
 import { BlockMap } from "./views/BlockMap.jsx";
 import { Candidate } from "./views/Candidate.jsx";
 import { Home } from "./views/Home.jsx";
@@ -9,7 +10,8 @@ import { Member } from "./views/Member.jsx";
 
 /* Hash routing, carried over unchanged from the pre-React site: these URLs are
    shareable and already published, so they must keep working.
-     #/ledamot/<id>  #/kandidat/<namn>  #/block  #/lamnar  #/om  */
+     #/ledamot/<id>  #/kandidat/<namn>  #/block  #/lamnar  #/om
+   #/valsedel and #/valsedel/<valkrets> were added later. */
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash);
 
@@ -28,6 +30,9 @@ function routeTo(hash) {
   if (parts[0] === "kandidat" && parts[1]) {
     return <Candidate name={decodeURIComponent(parts[1])} />;
   }
+  if (parts[0] === "valsedel") {
+    return <Ballot constituency={parts[1] ? decodeURIComponent(parts[1]) : null} />;
+  }
   if (parts[0] === "block") return <BlockMap />;
   if (parts[0] === "lamnar") return <Leaving />;
   if (parts[0] === "om") return <About />;
@@ -42,6 +47,7 @@ function Header() {
           Kandidatkollen
         </a>
         <nav>
+          <a href="#/valsedel">Din valsedel</a>
           <a href="#/block">Blockkartan</a>
           <a href="#/lamnar">Lämnar riksdagen</a>
           <a href="#/om">Om siffrorna</a>

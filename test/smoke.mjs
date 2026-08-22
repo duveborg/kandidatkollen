@@ -71,13 +71,16 @@ async function visit(name, hash) {
 const start = await visit("start", "");
 if (!/voteringar/.test(start)) fail("start", "saknar nyckeltal");
 await page.fill(".sok input", "Andersson");
-await page.waitForFunction(() => document.querySelectorAll(".traffar li").length > 0);
-const hits = await page.locator(".traffar li").count();
+await page.waitForFunction(() => document.querySelectorAll(".sokresultat li").length > 0);
+const hits = await page.locator(".sokresultat li").count();
 if (hits < 5) fail("start", `sökningen gav bara ${hits} träffar`);
+// the party-change list is the same markup, so it must not be counted as hits
+const switchers = await page.locator(".partibytare li").count();
+if (switchers === 0) fail("start", "ingen partibytare listad");
 
 // 2. a member profile, reached by clicking a hit
 current = "ledamot";
-await page.locator('.traffar li a[href^="#/ledamot/"]').first().click();
+await page.locator('.sokresultat li a[href^="#/ledamot/"]').first().click();
 await page.waitForSelector(".profil-topp h1");
 const member = await visit("ledamot", await page.evaluate(() => location.hash));
 for (const heading of ["Valsedeln 2026", "Röstning i kammaren", "Röstade mot sitt eget parti"]) {
@@ -130,11 +133,44 @@ if (!/Utfall|saknar utskottsförslag/.test(blockDetail)) {
   fail("blockkartan/votering", "detaljen blev tom");
 }
 
+// 4b. the ballot view: pick a constituency, expand a list, check the rows
+const picker = await visit("valsedel", "#/valsedel");
+if (!/valsedlar/.test(picker)) fail("valsedel", "valkretsvalet saknar listräkning");
+const constituencies = await page.locator('.valkretsval a[href^="#/valsedel/"]').count();
+if (constituencies !== 29) fail("valsedel", `${constituencies} valkretsar, väntade 29`);
+
+current = "valsedel/valkrets";
+await page.locator('.valkretsval a[href^="#/valsedel/"]').first().click();
+await page.waitForSelector(".valsedel-parti");
+const ballot = await visit("valsedel/valkrets", await page.evaluate(() => location.hash));
+if (!/personkryss/.test(ballot)) fail("valsedel/valkrets", "saknar noten om spärren");
+const parties = await page.locator("h2.valsedel-parti").count();
+if (parties < 8) fail("valsedel/valkrets", `bara ${parties} partier i valkretsen`);
+
+current = "valsedel/lista";
+await page.locator(".rader details summary").first().click();
+await page.waitForSelector(".valsedel-lista li");
+const names = await page.locator(".valsedel-lista li").count();
+if (names < 5) fail("valsedel/lista", `listan renderade ${names} kandidater`);
+const first = await page.locator(".valsedel-lista li").first().innerText();
+if (!/^1\b/.test(first.trim())) {
+  fail("valsedel/lista", `första raden är inte plats 1: ${first.slice(0, 40)}`);
+}
+// at least one candidate on a major party's list has to be a sitting member
+const sitting = await page.locator('.valsedel-lista a[href^="#/ledamot/"]').count();
+if (sitting === 0) fail("valsedel/lista", "ingen kandidat kopplad till en ledamot");
+
 const leaving = await visit("lämnar", "#/lamnar");
 if (!leaving.includes("Lämnar riksdagen")) fail("lämnar", "saknar rubrik");
 
 const about = await visit("om", "#/om");
-for (const heading of ["Röstandel, inte närvaro", "Det politiska rummet", "Källor"]) {
+for (const heading of [
+  "Röstandel, inte närvaro",
+  "Det politiska rummet",
+  "Valsedlarna",
+  "Byte av partibeteckning",
+  "Källor",
+]) {
   if (!about.includes(heading)) fail("om", `saknar avsnittet ”${heading}”`);
 }
 
@@ -142,8 +178,8 @@ for (const heading of ["Röstandel, inte närvaro", "Det politiska rummet", "Kä
 current = "kandidat";
 await page.goto(base + "/", { waitUntil: "networkidle" });
 await page.fill(".sok input", "Anders");
-await page.waitForFunction(() => document.querySelectorAll(".traffar li").length > 0);
-const newCandidate = page.locator('.traffar li a[href^="#/kandidat/"]').first();
+await page.waitForFunction(() => document.querySelectorAll(".sokresultat li").length > 0);
+const newCandidate = page.locator('.sokresultat li a[href^="#/kandidat/"]').first();
 if ((await newCandidate.count()) === 0) {
   fail("kandidat", "hittade ingen ny kandidat att öppna");
 } else {
@@ -161,6 +197,8 @@ for (const [name, hash] of [
     return page.locator('.traffar a[href^="#/ledamot/"]').first().getAttribute("href");
   })()],
   ["blockkartan", "#/block"],
+  ["valsedel", "#/valsedel"],
+  ["valsedel/valkrets", "#/valsedel/" + encodeURIComponent("Stockholms kommun")],
   ["lämnar", "#/lamnar"],
   ["om", "#/om"],
 ]) {

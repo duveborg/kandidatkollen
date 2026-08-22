@@ -61,6 +61,14 @@ export function medianComparison(value, median, unit) {
   return `median ${shown} — ${word} snittet`;
 }
 
+/* "47, 50 och 53" — a list of up to seven gap positions has to read as
+   Swedish, not as a chain of "och". */
+export function joinWords(items) {
+  const xs = items.map(String);
+  if (xs.length < 2) return xs.join("");
+  return `${xs.slice(0, -1).join(", ")} och ${xs[xs.length - 1]}`;
+}
+
 export function median(values) {
   const xs = values.slice().sort((a, b) => a - b);
   const n = xs.length;

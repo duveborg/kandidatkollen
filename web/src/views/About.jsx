@@ -53,6 +53,18 @@ export function About() {
             "ledamöter har ingen partilinje och får därför inget värde alls."}
         </p>
         <p>
+          {"Andelen räknas på de röster där ledamotens parti faktiskt hade en linje att " +
+            "avvika från, inte på alla avlagda röster. För den som lämnat sitt parti under " +
+            "perioden betyder det att bara tiden i partiet räknas — annars skulle månader " +
+            "som politiskt obunden späda ut talet utan att kunna innehålla en avvikelse."}
+        </p>
+        <p>
+          {"Talet ska inte läsas som en rangordning. Andelen beräknas även för ersättare med " +
+            "ett fåtal röster, och en avvikelse av fyrtio blir då en högre andel än " +
+            "tjugosex av tvåtusen. Profilsidan visar därför andelen intill antalet och " +
+            "rangordnar ingen."}
+        </p>
+        <p>
           {"Svensk partidisciplin är hård: medianledamoten avviker i långt under en procent " +
             "av sina röster. Ett tal på ett par procent är därför anmärkningsvärt högt, inte " +
             "lågt."}
@@ -121,6 +133,41 @@ export function About() {
             "uteslutna namnges under diagrammet."}
         </p>
 
+        <h2>Valsedlarna</h2>
+        <p>
+          {"Vyn Din valsedel visar de fastställda valsedlarna i en valkrets i den ordning " +
+            "kandidaterna står på dem. En nationell lista står i Valmyndighetens fil en gång " +
+            "per valkrets men är en enda valsedel, och räknas därför en gång. Flera partier " +
+            "har mer än en fastställd valsedel i samma valkrets; de skiljs åt av listnummer " +
+            "och kan innehålla samma kandidater med olika stavning och numrering."}
+        </p>
+        <p>
+          {"Två saker syns i listorna och är inte fel i bygget. Vissa listor är orankade — " +
+            "filen anger ingen ordning, och kandidaterna står då i bokstavsordning. Och vissa " +
+            "platser saknas: kandidaten har inte lämnat förklaring till Valmyndigheten och är " +
+            "därför inte valbar, varför namnet inte publiceras. Platsen finns kvar i " +
+            "numreringen och redovisas som ett hål i stället för att tigande försvinna."}
+        </p>
+        <p>
+          {"Ett antal kandidater är anmälda utan fastställd valsedel. De går inte att placera " +
+            "på någon lista och saknas därför i valsedelvyn, men finns i sökningen."}
+        </p>
+
+        <h2>Byte av partibeteckning</h2>
+        <p>
+          {`${stats.partibytare.length} ledamöter röstade under mer än en partibeteckning ` +
+            "under mandatperioden. Datumen sajten visar är första och sista rösten under " +
+            "varje beteckning — " +
+            "riksdagens voteringsdata innehåller inga formella in- eller utträdesdatum, och " +
+            "ett byte kan därför ha skett någon dag eller vecka före den första rösten under " +
+            "den nya beteckningen."}
+        </p>
+        <p>
+          {"Partiet som visas på en profil är partiet på ledamotens senaste röst, i " +
+            "datumordning. Voteringsfilerna ligger inte i datumordning, så partiet måste " +
+            "läsas ut kronologiskt."}
+        </p>
+
         <h2>Kopplingen till valsedeln</h2>
         <p>
           {"Kandidatlistorna kommer från Valmyndigheten och matchas mot riksdagens ledamöter " +
@@ -128,6 +175,11 @@ export function About() {
             "samman, och en ledamot vars namn stavas olika i de två källorna kan felaktigt " +
             "framstå som att hen inte kandiderar. Profilsidan flaggar de fall där matchningen " +
             "är osäker. Kontrollera alltid mot valsedeln."}
+        </p>
+        <p>
+          {"En del av kandidaterna står i filen med efternamnet först. Sajten vänder på dem, " +
+            "annars hamnar de baklänges i sökningen och kan aldrig matcha en ledamot. Det var " +
+            "så en avgående ledamot visade sig kandidera för ett annat parti."}
         </p>
 
         <h2>Vad sajten inte visar</h2>
