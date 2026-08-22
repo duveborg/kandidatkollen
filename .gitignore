@@ -1,0 +1,5 @@
+data/raw/
+data/cache/
+site/data/*.json
+__pycache__/
+.DS_Store

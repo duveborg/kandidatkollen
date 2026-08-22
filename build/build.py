@@ -1,0 +1,588 @@
+#!/usr/bin/env python3
+"""Bygger statisk JSON till site/data/ av rådatan i data/raw/.
+
+Fyra saker gör den här beräkningen icke-trivial, och de är värda att förstå
+innan man litar på siffrorna:
+
+1. NÄMNAREN. Varje votering i riksdagens data innehåller exakt 349 rader --
+   en per mandat, verifierat för samtliga 2571 voteringar i mandatperioden.
+   En ledamot som är ledig finns alltså inte i filen; hens ersättare står
+   där i stället. Rösträkningen är därmed själva den korrekta nämnaren, och
+   "Frånvarande" betyder att en *tjänstgörande* ledamot inte röstade. Vi
+   filtrerar därför inte på uppdragsperioder -- det skulle bara införa
+   avvikelser mot den auktoritativa källan.
+
+2. NÄRVARO ÄR INTE SKOLK. Även korrekt beräknad kan siffran missförstås.
+   Riksdagen har ett kvittningssystem där partier kommer överens om att
+   avstå från att rösta så att en frånvaro inte ändrar utfallet, och
+   partiledare och gruppledare kvittas ut i stor omfattning. Därför lagrar
+   vi rollkontext (statsråd, talman, parti- och gruppledare) tillsammans
+   med siffran, och sajten visar riksdagens medianvärde som referens i
+   stället för en naken topplista.
+
+3. PARTILINJE. Partiets linje i en votering är den vanligaste ståndpunkten
+   bland partiets röstande ledamöter, med minst tre röstande. Politiskt
+   obundna ledamöter ("-") har ingen partilinje och får inga avvikelser --
+   annars jämförs de mot ett medelvärde av varandra, vilket är meningslöst.
+   En avvikelse kräver att ledamoten faktiskt röstade; frånvaro är inte
+   avvikelse.
+
+4. SAKFRÅGAN. Voteringar med avser = motivfrågan är procedurella och räknas
+   inte in.
+"""
+
+import csv
+import collections
+import glob
+import json
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW = os.path.join(ROOT, "data", "raw")
+CACHE = os.path.join(ROOT, "data", "cache", "utskottsforslag")
+OUT = os.path.join(ROOT, "site", "data")
+
+VOTE_COLS = ("rm bet votering_id punkt namn iid parti valkrets rost avser "
+             "banknr kon fodd datum").split()
+
+RIKSDAGSPARTIER = ["S", "SD", "M", "C", "V", "KD", "MP", "L"]
+
+# Valmyndighetens partibeteckningar -> riksdagens förkortningar
+PARTI_ALIAS = {
+    "Arbetarepartiet-Socialdemokraterna": "S",
+    "Sverigedemokraterna": "SD",
+    "Moderaterna": "M",
+    "Centerpartiet": "C",
+    "Vänsterpartiet": "V",
+    "Kristdemokraterna": "KD",
+    "Miljöpartiet de gröna": "MP",
+    "Liberalerna (tidigare Folkpartiet)": "L",
+}
+
+RIKSMOTEN = ["2022/23", "2023/24", "2024/25", "2025/26"]
+
+
+# ---------------------------------------------------------------- hjälpare
+
+def norm_namn(s):
+    """Normaliserar ett namn för matchning mellan riksdagen och val.se."""
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def as_int(s, default=0):
+    """ORDNING är blank för partier som lämnat in orankade listor."""
+    try:
+        return int((s or "").strip())
+    except ValueError:
+        return default
+
+
+def load_votes():
+    """Läser alla voteringsfiler. Returnerar rader som dict."""
+    rows = []
+    files = sorted(glob.glob(os.path.join(RAW, "votering-*.csv")))
+    if not files:
+        sys.exit("hittar ingen voteringsdata i %s -- kör build/fetch.py först" % RAW)
+    for path in files:
+        with open(path, encoding="utf-8-sig") as f:
+            for r in csv.reader(f):
+                if len(r) < len(VOTE_COLS):
+                    continue
+                d = dict(zip(VOTE_COLS, r))
+                if d["avser"] != "sakfrågan":
+                    continue
+                rows.append(d)
+        print("  läste %s" % os.path.basename(path))
+    print("  %d röster totalt (sakfrågan)" % len(rows))
+    return rows
+
+
+def load_amnen():
+    """(votering_id -> {rubrik, bet, motforslag}) från utskottsforslagen."""
+    amnen = {}
+    for path in glob.glob(os.path.join(CACHE, "*.xml")):
+        if os.path.getsize(path) < 200:
+            continue
+        try:
+            root = ET.parse(path).getroot()
+        except ET.ParseError:
+            continue
+        for u in root.iter("utskottsforslag"):
+            vid = (u.findtext("votering_id") or "").strip().lower()
+            if not vid:
+                continue
+            amnen[vid] = {
+                "rubrik": (u.findtext("rubrik") or "").strip(),
+                "bet": (u.findtext("bet") or "").strip(),
+                "rm": (u.findtext("rm") or "").strip(),
+                "motforslag": (u.findtext("motforslag_partier") or "").replace('"', "").strip(),
+                "vinnare": (u.findtext("vinnare") or "").strip(),
+            }
+    print("  %d voteringar med känt ämne" % len(amnen))
+    return amnen
+
+
+# Roller som i praktiken sänker antalet avlagda röster, eftersom bäraren
+# regelmässigt kvittas ut eller inte röstar alls. Används för att sätta
+# närvarosiffran i sammanhang -- inte för att räkna om den.
+TUNGA_ROLLER = ("Partiledare", "Tillförordnad partiledare", "Språkrör",
+                "Gruppledare", "Partisekreterare", "Tillförordnad partisekreterare")
+
+PERIOD_START = "2022-09-26"   # riksmötet efter valet 2022
+PERIOD_SLUT = "2026-09-13"    # valdagen 2026
+
+ORGAN_NAMN = {"UN": "Utrikesnämnden", "KD": "Krigsdelegationen"}
+
+# Utskottsförkortningar -> läsbara namn, för ledamotssidorna.
+UTSKOTT_NAMN = {
+    "AU": "Arbetsmarknadsutskottet", "CU": "Civilutskottet",
+    "FiU": "Finansutskottet", "FöU": "Försvarsutskottet",
+    "JuU": "Justitieutskottet", "KU": "Konstitutionsutskottet",
+    "KrU": "Kulturutskottet", "MJU": "Miljö- och jordbruksutskottet",
+    "NU": "Näringsutskottet", "SfU": "Socialförsäkringsutskottet",
+    "SoU": "Socialutskottet", "SkU": "Skatteutskottet",
+    "TU": "Trafikutskottet", "UbU": "Utbildningsutskottet",
+    "UU": "Utrikesutskottet", "EUN": "EU-nämnden",
+    "UFöU": "Sammansatta utrikes- och försvarsutskottet",
+    "KUU": "Sammansatta konstitutions- och utrikesutskottet",
+    "BoU": "Bostadsutskottet", "LU": "Lagutskottet",
+}
+
+
+def overlappar(frm, tom, a=PERIOD_START, b=PERIOD_SLUT):
+    """Sant om uppdraget har minst en dag inne i mandatperioden.
+
+    Villkoret är tom > a, inte tom >= a: förra periodens uppdrag slutar
+    exakt på dagen då den nya börjar, och de hör inte hit.
+    """
+    return bool(frm) and bool(tom) and frm <= b and tom > a
+
+
+def load_uppdrag():
+    """iid -> uppdragsdata: utskott, ledighet, och rollkontext.
+
+    Ledighetsperioderna används inte för att räkna om närvaron (nämnaren
+    kommer från rösträkningen, se modulens docstring) utan för att kunna
+    visa varför en ledamot saknades under en del av perioden.
+    """
+    info = collections.defaultdict(
+        lambda: {"ledig": [], "utskott": [], "titel": "", "status": "",
+                 "statsrad": [], "talman": [], "partiroller": [], "organ": []}
+    )
+    with open(os.path.join(RAW, "person.csv"), encoding="utf-8-sig") as f:
+        for x in csv.DictReader(f):
+            rec = info[x["Id"]]
+            if x["Titel"] and not rec["titel"]:
+                rec["titel"] = x["Titel"]
+            rec["status"] = x["Status"] or rec["status"]
+            frm, tom = x["From"][:10], x["Tom"][:10]
+            typ, roll = x["Uppdragstyp"], x["Uppdragsroll"]
+
+            if typ == "kammaruppdrag" and x["Uppdragsrollstatus"].startswith("Ledig"):
+                if overlappar(frm, tom):
+                    rec["ledig"].append([frm, tom])
+            elif typ == "uppdrag" and x["Uppdragsorgan"]:
+                if overlappar(frm, tom):
+                    rec["utskott"].append({
+                        "organ": x["Uppdragsorgan"], "roll": roll,
+                        "from": frm, "tom": tom,
+                    })
+            elif typ == "Departement" and roll:
+                if overlappar(frm, tom):
+                    rec["statsrad"].append({"roll": roll, "from": frm, "tom": tom})
+            elif typ == "talmansuppdrag" and roll:
+                if overlappar(frm, tom):
+                    rec["talman"].append({"roll": roll, "from": frm, "tom": tom})
+            elif typ == "partiuppdrag" and roll in TUNGA_ROLLER:
+                if overlappar(frm, tom):
+                    rec["partiroller"].append({"roll": roll, "from": frm, "tom": tom})
+            elif typ == "Riksdagsorgan" and x["Uppdragsorgan"] in ORGAN_NAMN:
+                # Utrikesnämnden och Krigsdelegationen är i praktiken
+                # partiledarorgan. Vi redovisar medlemskapet som det
+                # verifierbara faktum det är, utan att därav sluta oss till
+                # att någon är partiledare -- den rollen saknas i datan för
+                # flera av de största partierna.
+                if roll == "Ledamot" and overlappar(frm, tom):
+                    rec["organ"].append({"organ": x["Uppdragsorgan"],
+                                         "namn": ORGAN_NAMN[x["Uppdragsorgan"]],
+                                         "from": frm, "tom": tom})
+    print("  %d personer med uppdragsdata" % len(info))
+    return info
+
+
+def in_period(datum, perioder):
+    return any(f <= datum <= t for f, t in perioder if f and t)
+
+
+def load_kandidater():
+    """Normaliserat namn -> lista av kandidaturer i riksdagsvalet 2026."""
+    path = os.path.join(RAW, "kandidaturer.csv")
+    with open(path, encoding="utf-8-sig") as f:
+        rows = csv.reader(f, delimiter=";")
+        hdr = next(rows)
+        # (namn, parti, listnummer) -> kandidatur, valkretsar samlas
+        acc = {}
+        for r in rows:
+            if not r or len(r) != len(hdr):
+                continue
+            d = dict(zip(hdr, r))
+            if d["VALTYP"] != "RD" or d["GILTIG"] != "J":
+                continue
+            key = (d["NAMN"].strip(), d["PARTIBETECKNING"].strip(), d["LISTNUMMER"])
+            a = acc.get(key)
+            if a is None:
+                a = acc[key] = {
+                    "namn": d["NAMN"].strip(),
+                    "parti_full": d["PARTIBETECKNING"].strip(),
+                    "parti": PARTI_ALIAS.get(d["PARTIBETECKNING"].strip()),
+                    "lista": d["LISTNUMMER"],
+                    "ordning": as_int(d["ORDNING"]),
+                    "alder": d["ÅLDER_PÅ_VALDAGEN"],
+                    "kon": d["KÖN"],
+                    "kommun": d["FOLKBOKFÖRINGSKOMMUN"],
+                    "uppgift": d["VALSEDELSUPPGIFT"].strip(),
+                    "valkretsar": [],
+                }
+            a["valkretsar"].append(d["VALKRETSNAMN"])
+
+    byname = collections.defaultdict(list)
+    for a in acc.values():
+        vk = sorted(set(a["valkretsar"]))
+        a["hela_landet"] = len(vk) >= 29
+        a["valkretsar"] = ["Hela landet"] if a["hela_landet"] else vk
+        byname[norm_namn(a["namn"])].append(a)
+    for lst in byname.values():
+        lst.sort(key=lambda a: a["ordning"])
+    print("  %d kandidaturer, %d unika namn (riksdagsvalet)"
+          % (len(acc), len(byname)))
+    return byname
+
+
+# ---------------------------------------------------------------- beräkning
+
+def partilinjer(votes):
+    """votering_id -> {parti: linje}. Kräver >=3 röstande i partiet.
+
+    Politiskt obundna ("-") utesluts: de utgör ingen sammanhållen grupp, så
+    en "linje" bland dem vore bara ett medelvärde av oberoende ledamöter.
+    """
+    per = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    for d in votes:
+        if d["rost"] in ("Ja", "Nej", "Avstår") and d["parti"] in RIKSDAGSPARTIER:
+            per[d["votering_id"]][d["parti"]][d["rost"]] += 1
+    out = {}
+    for vid, partier in per.items():
+        linjer = {}
+        for p, c in partier.items():
+            if sum(c.values()) >= 3:
+                linjer[p] = c.most_common(1)[0][0]
+        out[vid] = linjer
+    return out
+
+
+def build_ledamoter(votes, linjer, amnen, personinfo, kandidater):
+    """En post per ledamot som förekommer i mandatperiodens rösträkningar.
+
+    Nämnaren är antalet voteringar ledamoten står med i, eftersom riksdagen
+    alltid skickar en rad per mandat. Ingen egen filtrering behövs.
+    """
+    L = {}
+    for d in votes:
+        iid = d["iid"]
+        rec = L.get(iid)
+        if rec is None:
+            rec = L[iid] = {
+                "id": iid, "namn": d["namn"].strip(), "parti": d["parti"],
+                "valkrets": d["valkrets"], "fodd": d["fodd"], "kon": d["kon"],
+                "_rost": collections.Counter(),
+                "_rost_rm": collections.defaultdict(collections.Counter),
+                "_avvikelser": [],
+                "_deltog": 0, "_mojliga": 0,
+                "_partier": collections.Counter(),
+            }
+        # partibyten under perioden: senaste raden vinner, men vi minns alla
+        rec["parti"] = d["parti"]
+        rec["valkrets"] = d["valkrets"] or rec["valkrets"]
+        rec["_partier"][d["parti"]] += 1
+
+        rec["_mojliga"] += 1
+        rec["_rost"][d["rost"]] += 1
+        rec["_rost_rm"][d["rm"]][d["rost"]] += 1
+
+        if d["rost"] in ("Ja", "Nej", "Avstår"):
+            rec["_deltog"] += 1
+            linje = linjer.get(d["votering_id"], {}).get(d["parti"])
+            if linje and d["rost"] != linje:
+                a = amnen.get(d["votering_id"].lower(), {})
+                rec["_avvikelser"].append({
+                    "datum": d["datum"], "rm": d["rm"], "bet": d["bet"],
+                    "punkt": d["punkt"],
+                    "rubrik": a.get("rubrik") or "",
+                    "motforslag": a.get("motforslag") or "",
+                    "min_rost": d["rost"], "partiets_rost": linje,
+                })
+
+    out = []
+    for iid, r in L.items():
+        info = personinfo.get(iid, {})
+        mojliga, deltog = r["_mojliga"], r["_deltog"]
+        avv = sorted(r["_avvikelser"], key=lambda a: a["datum"], reverse=True)
+
+        kand = koppla_kandidatur(r, kandidater)
+
+        utskott = sorted(info.get("utskott", []),
+                         key=lambda u: u["from"], reverse=True)
+        for u in utskott:
+            u["namn"] = UTSKOTT_NAMN.get(u["organ"], u["organ"])
+
+        # Rollkontext: det som förklarar en låg röstandel utan att dölja den.
+        kontext = []
+        for s in info.get("statsrad", []):
+            kontext.append({"roll": s["roll"], "typ": "statsråd",
+                            "from": s["from"], "tom": s["tom"]})
+        for s in info.get("talman", []):
+            kontext.append({"roll": s["roll"], "typ": "talman",
+                            "from": s["from"], "tom": s["tom"]})
+        for s in info.get("partiroller", []):
+            kontext.append({"roll": s["roll"], "typ": "parti",
+                            "from": s["from"], "tom": s["tom"]})
+        kontext.sort(key=lambda k: k["from"], reverse=True)
+
+        # partier ledamoten röstat för under perioden, vanligast först
+        partier = [p for p, _ in r["_partier"].most_common()]
+
+        out.append({
+            "id": iid,
+            "namn": r["namn"],
+            "parti": r["parti"],
+            "partier_i_perioden": partier if len(partier) > 1 else [],
+            "valkrets": r["valkrets"],
+            "fodd": r["fodd"],
+            "kon": r["kon"],
+            "titel": info.get("titel", ""),
+            "status": info.get("status", ""),
+            "bild": "https://data.riksdagen.se/filarkiv/bilder/ledamot/%s_192.jpg" % iid,
+            "utskott": utskott[:8],
+            "rollkontext": kontext[:8],
+            # samma organ förekommer med flera datumintervall; visa en gång
+            "organ": list({o["namn"]: o for o in info.get("organ", [])}.values()),
+            "ledighet": info.get("ledig", []),
+            "rostning": {
+                "mojliga": mojliga,
+                "deltog": deltog,
+                "ja": r["_rost"]["Ja"],
+                "nej": r["_rost"]["Nej"],
+                "avstar": r["_rost"]["Avstår"],
+                "rostade_inte": r["_rost"]["Frånvarande"],
+                "narvaro": round(deltog / mojliga, 4) if mojliga else None,
+                "per_rm": {rm: dict(c) for rm, c in r["_rost_rm"].items()},
+            },
+            "avvikelser": {
+                "antal": len(avv),
+                "andel": round(len(avv) / deltog, 5) if deltog else None,
+                # obundna ledamöter har ingen partilinje att avvika från
+                "matbar": r["parti"] in RIKSDAGSPARTIER,
+                "exempel": [a for a in avv if a["rubrik"]][:12],
+            },
+            "kandidatur_2026": kand,
+        })
+    out.sort(key=lambda x: x["namn"])
+    print("  %d ledamöter" % len(out))
+    med = sum(1 for x in out if x["kandidatur_2026"])
+    print("  varav %d har kandidatur 2026, %d saknar" % (med, len(out) - med))
+    return out
+
+
+def koppla_kandidatur(rec, kandidater):
+    """Matchar en ledamot mot kandidatlistorna för 2026.
+
+    Matchningen sker på normaliserat namn. Finns flera kandidaturer väljs
+    den i samma parti som ledamoten senast röstat för; annars den högsta
+    placeringen. Namnkollisioner mellan olika personer är möjliga och
+    därför redovisar posten hur många kandidaturer namnet gav.
+    """
+    matches = kandidater.get(norm_namn(rec["namn"]), [])
+    if not matches:
+        return None
+    same = [m for m in matches if m["parti"] == rec["parti"]]
+    k = (same or matches)[0]
+    return {
+        "parti": k["parti"], "parti_full": k["parti_full"],
+        "ordning": k["ordning"], "valkretsar": k["valkretsar"],
+        "hela_landet": k["hela_landet"], "uppgift": k["uppgift"],
+        "partibyte": bool(k["parti"]) and k["parti"] != rec["parti"],
+        "antal_kandidaturer": len(matches),
+        "sakert_namn": len(matches) == 1 or bool(same),
+    }
+
+
+def build_index(ledamoter, kandidater):
+    """Sökindex: alla riksdagskandidater 2026, med länk till ev. ledamotspost.
+
+    Kompakt array-format för att hålla filen liten -- den laddas av alla
+    besökare.
+    """
+    by_norm = {norm_namn(l["namn"]): l for l in ledamoter}
+    rows = []
+    for nn, kandidaturer in kandidater.items():
+        k = kandidaturer[0]
+        l = by_norm.get(nn)
+        rows.append([
+            k["namn"],
+            k["parti"] or k["parti_full"],
+            k["ordning"],
+            "Hela landet" if k["hela_landet"] else (k["valkretsar"][0] if k["valkretsar"] else ""),
+            len(kandidaturer),
+            l["id"] if l else 0,
+            round(l["rostning"]["narvaro"] * 100) if l and l["rostning"]["narvaro"] else 0,
+        ])
+    rows.sort(key=lambda r: r[0])
+    print("  sökindex: %d kandidater" % len(rows))
+    return {
+        "falt": ["namn", "parti", "ordning", "valkrets", "kandidaturer",
+                 "ledamot_id", "narvaro_pct"],
+        "rader": rows,
+    }
+
+
+def build_stats(votes, linjer, amnen, ledamoter):
+    """Aggregat för startsidan."""
+    import itertools
+
+    # partienighet
+    agree = collections.Counter()
+    both = collections.Counter()
+    for vid, l in linjer.items():
+        for a, b in itertools.combinations(RIKSDAGSPARTIER, 2):
+            if a in l and b in l:
+                both[(a, b)] += 1
+                if l[a] == l[b]:
+                    agree[(a, b)] += 1
+    matris = {}
+    for (a, b), n in both.items():
+        if n:
+            matris["%s-%s" % (a, b)] = round(agree[(a, b)] / n, 4)
+
+    # knappa voteringar
+    tot = collections.defaultdict(collections.Counter)
+    datum = {}
+    for d in votes:
+        tot[d["votering_id"]][d["rost"]] += 1
+        datum[d["votering_id"]] = (d["datum"], d["rm"], d["bet"], d["punkt"])
+    knappa = []
+    for vid, c in tot.items():
+        ja, nej = c["Ja"], c["Nej"]
+        if ja + nej > 0 and abs(ja - nej) <= 10:
+            dt, rm, bet, punkt = datum[vid]
+            a = amnen.get(vid.lower(), {})
+            knappa.append({
+                "datum": dt, "rm": rm, "bet": bet, "punkt": punkt,
+                "rubrik": a.get("rubrik", ""), "motforslag": a.get("motforslag", ""),
+                "ja": ja, "nej": nej, "avstar": c["Avstår"],
+                "rostade_inte": c["Frånvarande"],
+                "marginal": abs(ja - nej),
+            })
+    knappa.sort(key=lambda x: (x["marginal"], x["datum"]))
+
+    lamnar = [{"namn": l["namn"], "parti": l["parti"], "valkrets": l["valkrets"],
+               "fodd": l["fodd"], "id": l["id"],
+               "narvaro": l["rostning"]["narvaro"]}
+              for l in ledamoter
+              if not l["kandidatur_2026"] and l["rostning"]["mojliga"] > 100]
+    lamnar.sort(key=lambda x: (x["parti"], x["namn"]))
+
+    # Referensvärden. Sajten visar medianen intill varje ledamots siffra,
+    # eftersom en röstandel utan jämförelsepunkt inbjuder till feltolkning.
+    # Bara ledamöter som satt större delen av perioden räknas in, annars
+    # drar korta ersättaruppdrag ner medianen.
+    HELTID = 1000
+    heltid = [l for l in ledamoter if l["rostning"]["mojliga"] >= HELTID]
+
+    def median(xs):
+        xs = sorted(x for x in xs if x is not None)
+        if not xs:
+            return None
+        n = len(xs)
+        return round(xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2, 4)
+
+    narvaro_median = median(l["rostning"]["narvaro"] for l in heltid)
+    per_parti = {}
+    for p in RIKSDAGSPARTIER:
+        grp = [l for l in heltid if l["parti"] == p]
+        if grp:
+            per_parti[p] = {
+                "antal": len(grp),
+                "narvaro_median": median(l["rostning"]["narvaro"] for l in grp),
+                "avvikelse_median": median(l["avvikelser"]["andel"] for l in grp),
+            }
+
+    return {
+        "riksmoten": RIKSMOTEN,
+        "partier": RIKSDAGSPARTIER,
+        "period": [PERIOD_START, PERIOD_SLUT],
+        "antal_voteringar": len({d["votering_id"] for d in votes}),
+        "antal_roster": len(votes),
+        "antal_ledamoter": len(ledamoter),
+        "antal_heltid": len(heltid),
+        "narvaro_median": narvaro_median,
+        "per_parti": per_parti,
+        "partienighet": matris,
+        "knappa_voteringar": knappa[:60],
+        "antal_knappa": len(knappa),
+        "lamnar_riksdagen": lamnar,
+    }
+
+
+# ---------------------------------------------------------------- main
+
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    print("läser voteringar:")
+    votes = load_votes()
+    print("läser ämnen:")
+    amnen = load_amnen()
+    print("läser uppdrag:")
+    personinfo = load_uppdrag()
+    print("läser kandidater:")
+    kandidater = load_kandidater()
+
+    print("beräknar partilinjer:")
+    linjer = partilinjer(votes)
+    print("  %d voteringar med minst en partilinje" % len(linjer))
+
+    print("bygger ledamöter:")
+    ledamoter = build_ledamoter(votes, linjer, amnen, personinfo, kandidater)
+
+    print("bygger sökindex:")
+    index = build_index(ledamoter, kandidater)
+
+    print("bygger statistik:")
+    stats = build_stats(votes, linjer, amnen, ledamoter)
+
+    def dump(name, obj):
+        path = os.path.join(OUT, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+        return os.path.getsize(path)
+
+    n = dump("index.json", index)
+    print("  index.json  %.0f kB" % (n / 1024))
+    n = dump("stats.json", stats)
+    print("  stats.json  %.0f kB" % (n / 1024))
+
+    ldir = os.path.join(OUT, "ledamot")
+    os.makedirs(ldir, exist_ok=True)
+    for l in ledamoter:
+        dump(os.path.join("ledamot", "%s.json" % l["id"]), l)
+    print("  ledamot/*.json  %d filer" % len(ledamoter))
+    print("\nklart -> %s" % OUT)
+
+
+if __name__ == "__main__":
+    main()

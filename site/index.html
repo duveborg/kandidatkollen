@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kandidatkollen — vad gjorde de i riksdagen?</title>
+<meta name="description" content="Sök på ett namn från din valsedel och se hur ledamoten faktiskt röstade i riksdagen 2022–2026. Byggd på öppna data från Sveriges riksdag och Valmyndigheten.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#/">Kandidatkollen</a>
+    <nav>
+      <a href="#/lamnar">Lämnar riksdagen</a>
+      <a href="#/om">Om siffrorna</a>
+    </nav>
+  </div>
+</header>
+
+<main id="app" class="wrap" aria-live="polite">
+  <p class="loading">Laddar valdata …</p>
+</main>
+
+<footer class="wrap foot">
+  <p>
+    Källor: <a href="https://data.riksdagen.se/">Sveriges riksdags öppna data</a>
+    (voteringar och uppdrag) och <a href="https://www.val.se/valresultat-och-statistik/statistik-och-data/radata-val-2026">Valmyndigheten</a>
+    (kandidatlistor för valet 2026). Sajten är oberoende och inte knuten till någon av dem.
+  </p>
+  <p id="byggd"></p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
