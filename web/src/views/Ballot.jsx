@@ -1,6 +1,13 @@
 import { Fragment, useMemo } from "react";
 import { loadBallots, useData, useFetch } from "../lib/data.js";
-import { joinWords, normalize, partyClass } from "../lib/format.js";
+import {
+  formatNumber,
+  joinWords,
+  nameKey,
+  normalize,
+  partyClass,
+  percent,
+} from "../lib/format.js";
 import { partyName } from "../lib/constants.js";
 import { useTitle } from "../lib/useTitle.js";
 import { CandidateBadge } from "../components/CandidateBadge.jsx";
@@ -27,7 +34,7 @@ function duplicated(lists) {
   return new Set(labels).size < labels.length;
 }
 
-function CandidateRow({ name, position, listParty, byName }) {
+function CandidateRow({ name, position, listParty, byName, crosses }) {
   const row = byName.get(normalize(name));
   const memberId = row?.memberId;
   const href = memberId
@@ -35,6 +42,7 @@ function CandidateRow({ name, position, listParty, byName }) {
     : `#/kandidat/${encodeURIComponent(name)}`;
 
   const facts = [];
+  if (crosses) facts.push(`${formatNumber(crosses)} kryss 2022`);
   if (memberId) {
     if (row.votePercent) facts.push(`röstade i ${row.votePercent} % av voteringarna`);
     if (row.deviations) {
@@ -69,7 +77,7 @@ function CandidateRow({ name, position, listParty, byName }) {
   );
 }
 
-function BallotList({ list, byName, siblings }) {
+function BallotList({ list, byName, siblings, crosses }) {
   const sat = list.kandidater.filter(
     ([name]) => byName.get(normalize(name))?.memberId,
   ).length;
@@ -116,12 +124,35 @@ function BallotList({ list, byName, siblings }) {
                 position={position}
                 listParty={list.parti}
                 byName={byName}
+                crosses={crosses?.[nameKey(name)]}
               />
             ))}
           </ul>
         </div>
       </details>
     </li>
+  );
+}
+
+/* The threshold in votes is what turns "does my cross matter" from a rule
+   into a number. It is 5 % of the party's votes in this constituency, so it
+   differs everywhere — and it only has an effect where the party won a seat. */
+function ThresholdNote({ party, result }) {
+  if (!result || !result.i_fordelning) return null;
+
+  const cleared = result.antal_over_sparr;
+  return (
+    <p className="hint sparr">
+      {`2022 krävdes ${formatNumber(result.sparr)} personkryss här för att passera spärren — ` +
+        `fem procent av ${party}s ${formatNumber(result.roster)} röster i valkretsen. ` +
+        (cleared === 0
+          ? "Ingen kandidat klarade det."
+          : cleared === 1
+            ? "En kandidat klarade det."
+            : cleared === 2
+              ? "Två kandidater klarade det."
+              : `${formatNumber(cleared)} kandidater klarade det.`)}
+    </p>
   );
 }
 
@@ -179,6 +210,11 @@ function Constituency({ ballots, constituency }) {
     return order.map((party) => ({ party, lists: byParty.get(party) }));
   }, [ballots, found]);
 
+  /* 2022 is keyed by constituency and party. The lists use the Riksdag
+     abbreviation when there is one, the full party name otherwise — the same
+     key the build writes. */
+  const results2022 = ballots.personval_2022?.[constituency] ?? {};
+
   if (!found) {
     return (
       <>
@@ -208,6 +244,10 @@ function Constituency({ ballots, constituency }) {
           <h2 className={`valsedel-parti ${partyClass(lists[0].parti)}`}>
             {lists[0].parti ? partyName(lists[0].parti) : party}
           </h2>
+          <ThresholdNote
+            party={lists[0].parti ? partyName(lists[0].parti) : party}
+            result={results2022[lists[0].parti || lists[0].parti_full]}
+          />
           {duplicated(lists) ? (
             <p className="hint">
               {`${party} har ${lists.length} fastställda valsedlar med samma beteckning i ` +
@@ -222,6 +262,7 @@ function Constituency({ ballots, constituency }) {
                 list={list}
                 byName={byName}
                 siblings={lists.length}
+                crosses={results2022[list.parti || list.parti_full]?.kryss}
               />
             ))}
           </ul>
@@ -230,8 +271,10 @@ function Constituency({ ballots, constituency }) {
 
       <p className="hint">
         {"Röstandel och avvikelser gäller mandatperioden 2022–2026 och finns bara för den " +
-          "som satt i riksdagen. Kopplingen mellan valsedel och ledamot sker på namn, så " +
-          "en namnkollision kan i sällsynta fall ge fel person."}
+          "som satt i riksdagen. Personkryssen är från valet 2022 och säger inget säkert om " +
+          "vad som krävs i år — listor, valkretsar och partiernas storlek ändras. " +
+          "Kopplingen mellan valsedel, ledamot och 2022-resultat sker på namn, så en " +
+          "namnkollision kan i sällsynta fall ge fel person."}
       </p>
       <a className="tillbaka" href="#/valsedel">
         ← Annan valkrets

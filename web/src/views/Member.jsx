@@ -10,6 +10,7 @@ import { partyName } from "../lib/constants.js";
 import { useTitle } from "../lib/useTitle.js";
 import { ActivitySection } from "../components/ActivitySection.jsx";
 import { CandidacyCard } from "../components/CandidacyCard.jsx";
+import { PersonalVoteCard } from "../components/PersonalVoteCard.jsx";
 import { Note } from "../components/Note.jsx";
 import { Stat, StatRow } from "../components/Stat.jsx";
 import { VoteRow } from "../components/Vote.jsx";
@@ -190,6 +191,8 @@ export function Member({ id }) {
       <PartyChange member={member} />
 
       <CandidacyCard member={member} candidacy={member.kandidatur_2026} />
+
+      <PersonalVoteCard member={member} result={member.personval_2022} />
 
       <h2>Röstning i kammaren</h2>
       <div className="kort">

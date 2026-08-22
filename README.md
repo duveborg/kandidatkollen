@@ -7,7 +7,8 @@ och skrivit om, vilka uppdrag hen haft — och om hen kandiderar igen.
 
 Känner du inte igen något namn går det åt andra hållet: välj din valkrets och
 gå igenom de fastställda valsedlarna lista för lista, med varje kandidats
-gärning i riksdagen intill namnet.
+gärning i riksdagen intill namnet — och med hur många personkryss som faktiskt
+krävdes i din valkrets 2022.
 
 Valkompasser mäter vad partier *säger*. Den här sajten mäter vad ledamöter
 *gjorde*, och är därför användbar för det beslut väljaren har svårast att fatta:
@@ -46,9 +47,14 @@ alltid om. Kör om båda stegen för att uppdatera sajten.
 | ” | `/utskottsforslag/{dok_id}` — vad varje voteringspunkt handlade om | per betänkande |
 | ” | `/personlista/` — mappning person-GUID ↔ intressent\_id | löpande |
 | [data.val.se](https://www.val.se/valresultat-och-statistik/statistik-och-data/radata-val-2026) | `kandidaturer.csv` — alla kandidater i valet 2026 | varje timme |
+| [resultat.val.se](https://resultat.val.se/val2022) | slutresultatet i riksdagsvalet 2022, en fil per valkrets — personröster per kandidat | fast |
 
-Underlaget är 2 571 voteringar, 897 279 avlagda röster och 113 190
-aktivitetsposter.
+Underlaget är 2 571 voteringar, 897 279 avlagda röster, 113 190
+aktivitetsposter och 13 684 kandidater med personröster i valet 2022.
+
+2022-resultatet ligger inte i någon nedladdningsbar fil. Valmyndighetens
+resultatapp hämtar det från `resultat.val.se/data/resultat/val2022/RD_<kod>_S.json`,
+29 filer, och valkretskoderna står i `valgeografi_val2022.json`.
 
 ## Metod, och vad den inte klarar
 
@@ -168,6 +174,33 @@ den nya beteckningen. Partiet som visas är partiet på den senaste rösten i
 datumordning — voteringsfilerna ligger inte i datumordning, vilket i en tidig
 version gav fel parti för fem av de nio.
 
+**Personvalsspärren är fem procent av partiets röster i valkretsen**, alltså
+ett annat tal i varje valkrets och för varje parti. Sajten räknar ut det i
+antal kryss, eftersom det är den formen en väljare kan använda: i Örebro län
+krävdes 3 229 kryss för Socialdemokraterna 2022 och 394 för Miljöpartiet.
+Uträkningen reproducerar Valmyndighetens egen lista över kvalificerade
+kandidater exakt, i samtliga 29 valkretsar. I valet 2022 klarade 166 kandidater
+spärren och 67 av riksdagens 349 ledamöter valdes in på personkryss.
+
+Spärren har bara verkan för partier som är med i mandatfördelningen. Grinden
+för det är `deltaMandatfordelning` på partiraden, inte antalet mandat i
+valkretsen: ett parti som tog platsen på ett utjämningsmandat saknas i
+mandatlistan, och den grinden gav 121 kvalificerade i stället för 166.
+
+Fyra saker begränsar tolkningen. Talen gäller 2022 och är ingen prognos.
+Spärren prövas valkrets för valkrets, så kryss någon annanstans kunde inte ge
+platsen — åtta ledamöter har noll kryss där de valdes in men kryss i upp till
+26 andra valkretsar, eftersom partiets listor går över hela landet. En kandidat
+utan personröster står inte i filen alls, så noll kryss och ingen kandidatur
+går inte att skilja åt; sajten skriver bara ut noll när namnet går att hitta
+någon annanstans i 2022-datan. Och namnformerna skiljer sig mellan källorna:
+personröstlistan använder tilltalsnamn medan Valmyndighetens ledamotslista
+använder fulla folkbokföringsnamn, och 66 av 349 ledamöter skrivs olika i de
+två delarna av samma fil. Bryggan mellan dem är röstetalet, inte namnet. Mot
+riksdagens egna namn krävs dessutom att bindestreck, punkter, utelämnade
+mellannamn och avvikande förnamnsstavning hanteras. Två ledamöter går ändå inte
+att hitta och saknar därför siffra.
+
 **Kopplingen till valsedeln sker på namn** och kan fela i två riktningar: två
 personer med samma namn kan slås samman, och en ledamot som stavas olika i de
 två källorna kan felaktigt framstå som att hen inte kandiderar. 297 av 426
@@ -191,6 +224,7 @@ huvuddelen av en ledamots påverkan.
 
 ```
 build/fetch.py     hämtar rådata till data/raw/ + cachar utskottsforslag
+                   och 2022 års valkretsresultat
 build/build.py     transformerar till site/data/
 web/               frontendkälla, React 19 + Vite
   index.html

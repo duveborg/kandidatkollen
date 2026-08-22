@@ -66,6 +66,16 @@ PARTI_ALIAS = {
 
 RIKSMOTEN = ["2022/23", "2023/24", "2024/25", "2025/26"]
 
+# Personvalsspärren i riksdagsval: en kandidat måste få personröster från
+# minst 5 % av partiets väljare i valkretsen för att kryssen ska flytta hen
+# förbi listans ordning. Verifierat mot 2022: ceil(partiets röster * 0,05)
+# reproducerar Valmyndighetens egen lista över kvalificerade i samtliga 166
+# (valkrets, parti) med mandat.
+PERSONVAL_SPARR = 0.05
+
+# Riksdagens mandat. Samma tal som antalet rader i varje votering.
+MANDAT = 349
+
 
 # ---------------------------------------------------------------- hjälpare
 
@@ -204,6 +214,101 @@ def overlappar(frm, tom, a=PERIOD_START, b=PERIOD_SLUT):
     exakt på dagen då den nya börjar, och de hör inte hit.
     """
     return bool(frm) and bool(tom) and frm <= b and tom > a
+
+
+def namn_nyckel(s):
+    """Nyckel som tål skillnaderna i namnform mellan källor och år.
+
+    Bindestreck mot mellanslag ("Jamal El-Haj" / "Jamal El Haj"), punkt efter
+    initial ("Carl B. Hamilton" / "Carl B Hamilton"). Båda formerna
+    förekommer i Valmyndighetens egna filer för samma person.
+    """
+    return re.sub(r"\s+", " ", norm_namn(s).replace("-", " ").replace(".", " ")).strip()
+
+
+def as_int_mellanslag(x):
+    """Röstetal står ibland som int, ibland som "5 157"."""
+    if isinstance(x, int):
+        return x
+    return int(str(x).replace(" ", "").replace("\xa0", "") or 0)
+
+
+def load_val2022():
+    """Personröster i riksdagsvalet 2022, per valkrets och parti.
+
+    Valmyndighetens resultatfil bär tre saker vi behöver, i tre delar som
+    använder *olika namnformer* -- vilket är fällan här:
+
+      - `personroster` per lista ger kryss per kandidat med tilltalsnamn,
+        alltså samma namnform som valsedeln och riksdagens egen data. En
+        kandidat kan stå på flera listor inom samma parti, så talen summeras.
+      - `kvalificeradeForPersonvalLista` och `ledamoterPerParti` använder
+        fulla folkbokföringsnamn: "Mehrnoosh Dadgostar" för Nooshi Dadgostar,
+        "Anna Kristina Axén Olin" för Kristina Axén Olin. 66 av 349 ledamöter
+        skiljer sig, så en namnmatchning mot dem tappar var femte tyst.
+        De två delarna delar däremot `kandidatnummer`.
+      - Bryggan mellan namnformerna är röstetalet: varje kvalificerad kandidat
+        matchar exakt ett använt namn med samma antal kryss inom samma parti
+        och valkrets. Det håller i alla 166 fall, så ingen namngissning behövs.
+
+    Kandidater utan personröster står inte i filen alls; talen går ner till 1,
+    så ett saknat namn betyder noll kryss -- eller ingen kandidatur i den
+    valkretsen. De går inte att skilja åt utan 2022 års kandidatfil.
+    """
+    d_in = os.path.join(RAW, "val2022")
+    if not os.path.isdir(d_in):
+        print("  saknas: data/raw/val2022 -- kör fetch.py")
+        return {}
+
+    ut = {}
+    for name in sorted(os.listdir(d_in)):
+        if not name.startswith("RD_") or not name.endswith(".json"):
+            continue
+        with open(os.path.join(d_in, name), encoding="utf-8") as f:
+            d = json.load(f)
+        vk = d["namn"]
+        personvalda_nr = {l["kandidatnummer"]
+                          for lp in d.get("ledamoterPerParti", [])
+                          for l in lp.get("ledamoter", [])
+                          if l.get("personvald")}
+        # parti -> antal kryss -> blev personvald
+        kval = collections.defaultdict(dict)
+        for k in d.get("kvalificeradeForPersonvalLista", []):
+            kval[k["partiforkortning"]][k["antal"]] = (
+                k["kandidatnummer"] in personvalda_nr)
+
+        partier = {}
+        for p in d["rosterPaverkaMandat"]["partiroster"]:
+            kryss = collections.Counter()
+            for lista in p.get("listRoster", []):
+                for pers in lista.get("personroster", []):
+                    kryss[namn_nyckel(pers["namn"])] += as_int_mellanslag(pers["antal"])
+            if not kryss:
+                continue
+            roster = as_int_mellanslag(p["antalRoster"])
+            kort = p.get("partiforkortning")
+            nyckel = kort if kort in RIKSDAGSPARTIER else p["partibeteckning"].strip()
+            partier[nyckel] = {
+                "roster": roster,
+                "sparr": int(math.ceil(roster * PERSONVAL_SPARR)),
+                # Spärren har bara verkan för partier som är med i
+                # mandatfördelningen. `partiMandat` räcker inte som grind: den
+                # listar bara fasta mandat i valkretsen, så ett parti som tog
+                # platsen på ett utjämningsmandat saknas där. Filens eget
+                # deltaMandatfordelning träffar exakt: 166 mot 166 kvalificerade
+                # i samtliga 29 valkretsar.
+                "i_fordelning": bool(p.get("deltaMandatfordelning")),
+                "kryss": dict(kryss),
+                "personvalda": sorted(n for n, v in kryss.items()
+                                      if kval[kort].get(v)),
+            }
+        ut[vk] = partier
+
+    kryssposter = sum(len(p["kryss"]) for v in ut.values() for p in v.values())
+    personvalda = sum(len(p["personvalda"]) for v in ut.values() for p in v.values())
+    print("  %d valkretsar, %d kandidater med personröster, %d personvalda"
+          % (len(ut), kryssposter, personvalda))
+    return ut
 
 
 def load_uppdrag():
@@ -481,7 +586,103 @@ def partilinjer(votes):
     return out
 
 
-def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
+def hitta_kandidat(nyckel, kryss):
+    """Matchar en ledamots namn mot personröstlistan för ett parti.
+
+    Tre steg, i ordning, och varje lösare steg kräver en enda träff:
+      1. exakt på namn_nyckel
+      2. namnet är en delmängd av det andra ("Lorena Delgado" i "Lorena
+         Delgado Varas", "Emma Köster" i "Emma Ahlström Köster")
+      3. förnamnets initial plus efternamnet ("Linda W Snecker" mot
+         "Linda Westerlund Snecker")
+    Riksdagen och Valmyndigheten skriver samma person olika, och utan de här
+    stegen tappas nio ledamöter tyst -- en av dem personvald.
+    """
+    if nyckel in kryss:
+        return nyckel
+
+    mina = set(nyckel.split())
+    delmangd = [n for n in kryss
+                if mina < set(n.split()) or set(n.split()) < mina]
+    if len(delmangd) == 1:
+        return delmangd[0]
+
+    delar = nyckel.split()
+    if len(delar) > 1:
+        initial = (delar[0][0], delar[-1])
+        initialer = [n for n in kryss
+                     if len(n.split()) > 1
+                     and (n.split()[0][0], n.split()[-1]) == initial]
+        if len(initialer) == 1:
+            return initialer[0]
+    return None
+
+
+def koppla_personval(rec, spann, val2022):
+    """Ledamotens personröster i valet 2022, i den valkrets hen sitter för.
+
+    Bara valkretsen hen har mandat i räknas: spärren prövas per valkrets, och
+    kryss i en annan valkrets kunde inte ge hhen den här platsen. Flera
+    ledamöter -- särskilt SD:s -- står på listor i tjugo valkretsar och har
+    sina kryss någon annanstans än där de valdes in.
+
+    Saknas namnet i den egna valkretsen är noll kryss det riktiga svaret, men
+    bara om namnet dyker upp någon annanstans i 2022-datan: då vet vi att
+    namnformen går att matcha. Syns namnet ingenstans kan det lika väl vara
+    en matchningsmiss, och då rapporteras ingenting alls.
+    """
+    nyckel = namn_nyckel(rec["namn"])
+    valdes_for = spann[0][0] if spann else rec["parti"]
+
+    partier = val2022.get(rec["valkrets"]) or {}
+    ordnade = ([(valdes_for, partier[valdes_for])] if valdes_for in partier
+               else []) + [(p, d) for p, d in partier.items() if p != valdes_for]
+    for parti, data in ordnade:
+        träff = hitta_kandidat(nyckel, data["kryss"])
+        if träff is None:
+            continue
+        antal = data["kryss"][träff]
+        return {
+            "parti": parti,
+            "valkrets": rec["valkrets"],
+            "antal": antal,
+            "andel": round(antal / data["roster"], 5) if data["roster"] else None,
+            "sparr": data["sparr"],
+            "parti_roster": data["roster"],
+            "over_sparr": antal >= data["sparr"],
+            # personvald går bara att avgöra för partier som fick mandat i
+            # valkretsen; utan mandat spelar spärren ingen roll
+            "personvald": (träff in data["personvalda"]
+                           if data["i_fordelning"] else None),
+        }
+
+    # noll i egen valkrets -- men bara om namnet syns någon annanstans
+    annan = None
+    for vk, ps in val2022.items():
+        if vk == rec["valkrets"]:
+            continue
+        for parti, data in ps.items():
+            träff = hitta_kandidat(nyckel, data["kryss"]) if parti == valdes_for else None
+            if träff and (annan is None or data["kryss"][träff] > annan["antal"]):
+                annan = {"valkrets": vk, "antal": data["kryss"][träff]}
+    if annan is None or not partier.get(valdes_for):
+        return None
+    data = partier[valdes_for]
+    return {
+        "parti": valdes_for,
+        "valkrets": rec["valkrets"],
+        "antal": 0,
+        "andel": 0,
+        "sparr": data["sparr"],
+        "parti_roster": data["roster"],
+        "over_sparr": False,
+        "personvald": False if data["i_fordelning"] else None,
+        "flest_i": annan,
+    }
+
+
+def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet,
+                    val2022):
     """En post per ledamot som förekommer i mandatperiodens rösträkningar.
 
     Nämnaren är antalet voteringar ledamoten står med i, eftersom riksdagen
@@ -621,12 +822,16 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet):
                 "exempel": [a for a in avv if a["rubrik"]][:12],
             },
             "kandidatur_2026": kand,
+            "personval_2022": koppla_personval(r, spann, val2022),
             "aktivitet": summera_aktivitet(aktivitet.get(iid)),
         })
     out.sort(key=lambda x: x["namn"])
     print("  %d ledamöter" % len(out))
     med = sum(1 for x in out if x["kandidatur_2026"])
     print("  varav %d har kandidatur 2026, %d saknar" % (med, len(out) - med))
+    pv = [x for x in out if x["personval_2022"]]
+    print("  %d har personröster från 2022, varav %d personvalda"
+          % (len(pv), sum(1 for x in pv if x["personval_2022"]["personvald"])))
     return out
 
 
@@ -897,7 +1102,7 @@ def build_index(ledamoter, kandidater):
     }
 
 
-def build_valsedlar(sedlar):
+def build_valsedlar(sedlar, val2022):
     """Valsedlarna per valkrets, som de ser ut i röstningsbåset.
 
     En nationell lista står i källan en gång per valkrets men är en enda
@@ -909,6 +1114,10 @@ def build_valsedlar(sedlar):
     Rader utan beteckning är anmälda kandidater utan fastställd valsedel.
     De går inte att placera på en lista och redovisas separat i stället för
     att tigande försvinna.
+
+    Personrösterna från 2022 följer med per valkrets, men bara för namn som
+    står på en valsedel i samma valkrets 2026 -- resten har ingen läsare här,
+    och beskärningen tar bort 58 % av posterna.
     """
     def sortnyckel(sed):
         # riksdagspartierna först, i mandatordning, sedan alfabetiskt
@@ -945,6 +1154,29 @@ def build_valsedlar(sedlar):
         for vk in sed["valkretsar"]:
             per_valkrets[vk].append(idx)
 
+    # personröster 2022, beskurna till namnen som står på valsedel i samma
+    # valkrets 2026
+    personval = {}
+    for vk in per_valkrets:
+        namn_i_vk = set()
+        for idx in per_valkrets[vk]:
+            for namn, _ in listor[idx]["kandidater"]:
+                namn_i_vk.add(namn_nyckel(namn))
+        partier = {}
+        for parti, d in (val2022.get(vk) or {}).items():
+            kryss = {n: v for n, v in d["kryss"].items() if n in namn_i_vk}
+            partier[parti] = {
+                "roster": d["roster"],
+                "sparr": d["sparr"],
+                "i_fordelning": d["i_fordelning"],
+                "kryss": kryss,
+                "personvalda": [n for n in d["personvalda"] if n in namn_i_vk],
+                "antal_over_sparr": sum(1 for v in d["kryss"].values()
+                                        if v >= d["sparr"]),
+            }
+        if partier:
+            personval[vk] = partier
+
     valkretsar = [{"namn": vk, "listor": per_valkrets[vk]}
                   for vk in sorted(per_valkrets)]
     print("  %d valsedlar i %d valkretsar, %d kandidatplatser, %d ogiltiga platser"
@@ -954,15 +1186,20 @@ def build_valsedlar(sedlar):
     if utan:
         print("  %d kandidater utan fastställd valsedel, %d partier"
               % (sum(utan.values()), len(utan)))
+    if personval:
+        print("  personröster 2022: %d kandidatposter kvar efter beskärning"
+              % sum(len(p["kryss"]) for v in personval.values()
+                    for p in v.values()))
     return {
         "valkretsar": valkretsar,
         "listor": listor,
         "utan_valsedel": [{"parti_full": p, "antal": n}
                           for p, n in sorted(utan.items())],
+        "personval_2022": personval,
     }
 
 
-def build_stats(votes, linjer, amnen, ledamoter):
+def build_stats(votes, linjer, amnen, ledamoter, val2022):
     """Aggregat för startsidan och blockkartan."""
     matris = enighet(linjer)
 
@@ -1051,6 +1288,24 @@ def build_stats(votes, linjer, amnen, ledamoter):
                 "motioner_median": akt(grp, "motioner"),
             }
 
+    # Personvalet 2022 i siffror. Talen gäller hela riket och är oberoende av
+    # namnmatchning, till skillnad från den enskilda ledamotens siffra.
+    personval = None
+    if val2022:
+        # Bara partier i mandatfördelningen; för de övriga har spärren ingen
+        # verkan och talet blir meningslöst stort (979 i stället för 166).
+        over = sum(1 for v in val2022.values() for p in v.values()
+                   if p["i_fordelning"]
+                   for x in p["kryss"].values() if x >= p["sparr"])
+        personval = {
+            "personvalda": sum(len(p["personvalda"]) for v in val2022.values()
+                               for p in v.values()),
+            "over_sparr": over,
+            "kandidater_med_kryss": sum(len(p["kryss"]) for v in val2022.values()
+                                        for p in v.values()),
+            "mandat": MANDAT,
+        }
+
     return {
         "riksmoten": RIKSMOTEN,
         "partier": RIKSDAGSPARTIER,
@@ -1068,6 +1323,7 @@ def build_stats(votes, linjer, amnen, ledamoter):
         "antal_knappa": len(knappa),
         "lamnar_riksdagen": lamnar,
         "partibytare": bytare,
+        "personval_2022": personval,
     }
 
 
@@ -1083,6 +1339,8 @@ def main():
     personinfo = load_uppdrag()
     print("läser kandidater:")
     kandidater, sedlar = load_kandidater()
+    print("läser personvalet 2022:")
+    val2022 = load_val2022()
     print("läser sagt och gjort:")
     aktivitet = load_aktivitet()
 
@@ -1092,16 +1350,16 @@ def main():
 
     print("bygger ledamöter:")
     ledamoter = build_ledamoter(votes, linjer, amnen, personinfo, kandidater,
-                                aktivitet)
+                                aktivitet, val2022)
 
     print("bygger sökindex:")
     index = build_index(ledamoter, kandidater)
 
     print("bygger valsedlar:")
-    valsedlar = build_valsedlar(sedlar)
+    valsedlar = build_valsedlar(sedlar, val2022)
 
     print("bygger statistik:")
-    stats = build_stats(votes, linjer, amnen, ledamoter)
+    stats = build_stats(votes, linjer, amnen, ledamoter, val2022)
 
     print("beräknar politiskt rum:")
     rum = build_rum(votes, ledamoter)

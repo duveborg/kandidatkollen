@@ -153,6 +153,43 @@ export function About() {
             "på någon lista och saknas därför i valsedelvyn, men finns i sökningen."}
         </p>
 
+        <h2>Personkryssen 2022</h2>
+        <p>
+          {"Siffrorna kommer från Valmyndighetens slutresultat för riksdagsvalet 2022, en " +
+            "fil per valkrets. Spärren för personval är fem procent av partiets röster i " +
+            "valkretsen, så den är ett annat tal i varje valkrets och för varje parti. " +
+            "Sajten räknar ut den i antal kryss, eftersom det är den formen en väljare kan " +
+            "använda. Uträkningen reproducerar Valmyndighetens egen lista över kvalificerade " +
+            "kandidater exakt, i samtliga 29 valkretsar."}
+        </p>
+        <p>
+          {`I valet 2022 klarade ${formatNumber(stats.personval_2022?.over_sparr)} kandidater ` +
+            `spärren, och ${stats.personval_2022?.personvalda} av riksdagens ` +
+            `${stats.personval_2022?.mandat} ledamöter valdes in på personkryss — alltså ` +
+            "flyttades förbi partiets egen rangordning. Spärren har bara verkan för partier " +
+            "som är med i mandatfördelningen; för övriga partier redovisas kryssen utan " +
+            "spärr, eftersom den inte kan ge dem något mandat."}
+        </p>
+        <p>
+          {"Tre saker begränsar tolkningen. Talen gäller 2022 och är ingen prognos: listor, " +
+            "valkretsar och partiernas storlek ändras mellan valen. Spärren prövas valkrets " +
+            "för valkrets, så kryss i en annan valkrets än den ledamoten valdes i kunde inte " +
+            "ge platsen — flera ledamöter står på listor i tjugo valkretsar och har sina " +
+            "kryss någon annanstans än där de tog mandatet. Och en kandidat utan " +
+            "personröster står inte i filen alls, så sajten skiljer inte noll kryss från " +
+            "ingen kandidatur; den skriver bara ut noll för en ledamot vars namn går att " +
+            "hitta någon annanstans i 2022-datan."}
+        </p>
+        <p>
+          {"Namnformerna skiljer sig mellan källorna, och det är den känsligaste punkten. " +
+            "Personröstlistan använder tilltalsnamn, medan Valmyndighetens ledamotslista " +
+            "använder fulla folkbokföringsnamn — 66 av 349 ledamöter skrivs olika i de två " +
+            "delarna av samma fil. Bryggan mellan dem är röstetalet, inte namnet. Mot " +
+            "riksdagens egna namn krävs dessutom att bindestreck, punkter och utelämnade " +
+            "mellannamn hanteras. Två ledamöter går ändå inte att hitta i 2022-datan och " +
+            "saknar därför siffra."}
+        </p>
+
         <h2>Byte av partibeteckning</h2>
         <p>
           {`${stats.partibytare.length} ledamöter röstade under mer än en partibeteckning ` +

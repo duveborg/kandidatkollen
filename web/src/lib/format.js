@@ -6,6 +6,13 @@ export function normalize(s) {
   return (s ?? "").toString().trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/* Mirrors namn_nyckel() in build.py: hyphen and period differences are the
+   two ways Valmyndigheten writes the same person in different files and
+   years ("Jamal El-Haj" / "Jamal El Haj", "Carl B. Hamilton"). */
+export function nameKey(s) {
+  return normalize(s).replace(/-/g, " ").replace(/\./g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function percent(value, decimals = 1) {
   if (value == null) return "–";
   return (value * 100).toFixed(decimals).replace(".", ",") + " %";

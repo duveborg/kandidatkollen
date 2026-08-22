@@ -20,6 +20,11 @@ Utvecklingsservern serverar `site/data/` på `/data` via en plugin i
 `vite.config.js`; datan bundlas aldrig. `npm run bygg` skriver till `site/`
 med `emptyOutDir: false`, annars raderas `site/data/`.
 
+`fetch.py` hämtar även slutresultatet i riksdagsvalet 2022 från
+`resultat.val.se/data/resultat/val2022/RD_<kod>_S.json`, 29 filer. Suffixet är
+`_S` — appens egen källkod kallar konstanten `SLUTLIG`, vilket ger 404. Det gick
+bara att fastställa genom att se vilka anrop sidan faktiskt gör.
+
 `fetch.py` hoppar över befintliga filer utom `kandidaturer.csv`, som
 Valmyndigheten uppdaterar varje timme fram till valdagen **13 september 2026**.
 Kör om båda stegen innan publicering. `data/` och hela `site/` är genererade
@@ -63,6 +68,11 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | Nationella listor | En kandidatur replikeras över alla 29 valkretsar. Nyckeln är `(namn, parti, listnummer)`; ≥29 valkretsar betyder "Hela landet". Valsedelns identitet är i stället `(parti, listnummer, VALKRETSBETECKNING PÅ VALSEDELN)` — beteckningen `HELA LANDET` är det som skiljer en nationell sedel från en valkretssedel. |
 | `NAMN` i kandidaturfilen | 2 262 rader står som **"Efternamn, Förnamn"**, resten omvänt. Det är gruppen utan fastställd valsedel — 75 personer, replikerade över 29 valkretsar. `flip_namn()` vänder dem; utan den hamnar de baklänges i sökindexet och kan aldrig matcha en ledamot. Det var så Katja Nybergs kandidatur för Valsamverkanspartiet var osynlig. Ett namn har i stället ett efterhängande komma och står redan rätt — vänd inte på det. |
 | `GILTIG` i kandidaturfilen | 770 kandidaturer har `GILTIG=N` — kandidaten har inte lämnat förklaring, och `NAMN` är då maskerat till strängen "inte lämnat förklaring". Platsen finns kvar i numreringen, så listan får **hål** (upp till 7 på en lista). Filtrera bort dem från kandidater men behåll positionen i `ogiltiga`, annars ser hålet ut som en bugg. |
+| Namnformer i 2022-resultatet | Filen bär **tre namnformer**. `personroster` använder tilltalsnamn (samma form som valsedeln och riksdagen), medan `kvalificeradeForPersonvalLista` och `ledamoterPerParti` använder fulla folkbokföringsnamn: "Mehrnoosh Dadgostar" för Nooshi Dadgostar, "Anna Kristina Axén Olin" för Kristina Axén Olin. **66 av 349** ledamöter skiljer sig. Matcha inte på namn mellan delarna — de två senare delar `kandidatnummer`, och bryggan till `personroster` är **röstetalet**, som ger exakt en träff i alla 166 fall. |
+| Namnformer mot riksdagen | Riksdagens namn skiljer sig i sin tur från Valmyndighetens: bindestreck mot mellanslag ("Jamal El-Haj" / "Jamal El Haj"), punkt efter initial ("Carl B. Hamilton"), utelämnat mellannamn ("Emma Köster" / "Emma Ahlström Köster"), initial i stället för namn ("Linda W Snecker" / "Linda Westerlund Snecker") och till och med annan stavning av förnamnet ("Marcus" / "Markus Wiechel"). `namn_nyckel()` plus `hitta_kandidat()` tar 424 av 426 ledamöter; exakt matchning tog 406. |
+| Personröster i annan valkrets | Spärren prövas **per valkrets**. Åtta ledamöter -- sju av dem SD:s -- har noll kryss i den valkrets de valdes i men kryss i upp till 26 andra, eftersom partiets listor går över hela landet. Slå aldrig samman dem till en rikssiffra: kryss i Västmanland kunde inte ge mandatet i Blekinge. |
+| Noll mot okänt | Kandidater utan personröster står **inte i filen alls** (talen går ner till 1). Ett saknat namn är därför noll kryss *eller* en matchningsmiss. `koppla_personval()` skriver bara ut noll när namnet går att hitta någon annanstans i 2022-datan; annars rapporteras ingenting. Två ledamöter hamnar där. |
+| `partiMandat` | Listar bara **fasta mandat** i valkretsen. Ett parti som tog platsen på ett utjämningsmandat saknas, så `mandat > 0` är fel grind för personvalsspärren -- den gav 121 kvalificerade mot filens 166. Använd `deltaMandatfordelning` på partiraden i stället: 166 mot 166 i samtliga 29 valkretsar. |
 | Dubbla valsedlar | 33 fall där ett parti har **fler än en fastställd valsedel med samma beteckning** i samma valkrets — SD i alla 29. Innehållet är nästan identiskt men stavning och numrering skiljer ("Helena Ståhl" mot "Helena Stål"). Slå inte samman dem: båda är fastställda. Gränssnittet noterar bara fallet när beteckningen är densamma; en valkretslista plus en nationell lista är två olika sedlar. |
 | Uppdragsperioder | Förra periodens uppdrag slutar **exakt** på dagen den nya börjar. `overlappar()` kräver därför `tom > PERIOD_START`, inte `>=`. |
 | Statsråd | Sittande statsråd förekommer **inte alls** i voteringsdatan. De 14 som gör det är avgångna statsråd som blivit vanliga ledamöter. |
@@ -100,6 +110,9 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
   lågröstande mot mitten; utan filtret framstod Jimmie Åkesson (14 %) som
   SD:s största avvikare. Filtret utesluter exakt två ledamöter, som namnges
   i gränssnittet. Sänk inte tröskeln utan att hantera artefakten på annat sätt.
+- **Personkryssen 2022 är ingen prognos.** Listor, valkretsar och partiernas
+  storlek ändras mellan valen. Spärren för 2022 får stå som storleksordning för
+  hur många kryss som brukar krävas, aldrig som vad som krävs i år.
 - **Skriv procentenheter, inte procent**, för skillnader mot medianen.
 - **Varje förbehåll i koden ska också stå på `#/om`**, formulerat för en
   läsare. Lägger du till ett mått, lägg till dess begränsning där.
@@ -114,7 +127,8 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
 ## Struktur
 
 ```
-build/fetch.py       hämtar rådata, cachar 854 utskottsforslag
+build/fetch.py       hämtar rådata, cachar 854 utskottsforslag och 29
+                     valkretsresultat från valet 2022
 build/build.py       all beräkning; funktionsdocstrings bär metodvalen
 vite.config.js       root: web/, out: site/, plugin som serverar /data i dev
 web/index.html       skalet, #root
@@ -123,8 +137,8 @@ web/src/App.jsx      hash-router, header, footer, laddning av basdata
 web/src/lib/         format, constants, data (fetch + context + useFetch),
                      search, useTitle
 web/src/components/  Stat, Note, HitRow, CandidateBadge, Vote, CandidacyCard,
-                     ActivitySection, charts/{HeatTable, Timeline,
-                     PoliticalSpace, labels}
+                     PersonalVoteCard, ActivitySection,
+                     charts/{HeatTable, Timeline, PoliticalSpace, labels}
 web/src/views/       Home, Member, Candidate, Ballot, Leaving, BlockMap, About
 web/src/style.css    ljust/mörkt via prefers-color-scheme, --parti per parti
 test/smoke.mjs       Playwright-rökprov över alla vyer
@@ -175,6 +189,8 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | aktivitetsposter | 113 190 |
 | valsedlar | 285 i 29 valkretsar, 10 521 kandidatplatser, 95 ogiltiga |
 | partibytare | 9, samtliga från parti till politiskt obunden |
+| personvalet 2022 | 67 av 349 personvalda, 166 över spärren, 13 684 kandidater med kryss |
+| personval per ledamot | 424 av 426 matchade, varav 59 personvalda (de 8 som fattas är statsråd och talman, som inte finns i voteringsdatan) |
 
 Ändras siffran för sökindex eller kandidatur 2026 är `flip_namn()` det första
 att titta på: den slår ihop namn som stod baklänges, och en sammanslagning

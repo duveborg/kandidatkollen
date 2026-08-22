@@ -1,8 +1,9 @@
-/* The three cases a reader has to tell apart wherever a name is listed: a
-   sitting member running again, a sitting member leaving, and a candidate
-   with no record in the Riksdag. */
+/* The three cases a reader has to tell apart wherever a name is listed. All
+   three are claims about the Riksdag, not about candidacy: "ny kandidat"
+   became wrong once the ballot rows started showing personal votes from 2022
+   next to the badge. */
 export function CandidateBadge({ memberId, candidacies }) {
   if (memberId && candidacies) return <span className="pill har">satt i riksdagen</span>;
   if (memberId) return <span className="pill">lämnar riksdagen</span>;
-  return <span className="pill utan">ny kandidat</span>;
+  return <span className="pill utan">inte i riksdagen</span>;
 }

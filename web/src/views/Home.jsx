@@ -66,6 +66,13 @@ export function Home() {
             {"Välj din valkrets och gå igenom valsedlarna som ligger i valbåset, lista för " +
               "lista, med varje kandidats röstning i riksdagen intill namnet."}
           </p>
+          {stats.personval_2022 ? (
+            <p>
+              {`I valet 2022 valdes ${stats.personval_2022.personvalda} av riksdagens ` +
+                `${stats.personval_2022.mandat} ledamöter in på personkryss. Valsedelvyn visar ` +
+                "hur många kryss som krävdes i din valkrets, parti för parti."}
+            </p>
+          ) : null}
           <p className="hint">
             <a href="#/valsedel">Öppna din valsedel →</a>
           </p>

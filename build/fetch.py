@@ -7,6 +7,7 @@ Källor:
   - data.riksdagen.se  utskottsforslag (ett anrop per betänkande, cachas)
   - data.riksdagen.se  personlista, för id-mappning (se fetch_idkarta)
   - data.val.se        kandidaturer inför valet 2026
+  - resultat.val.se    slutresultatet i riksdagsvalet 2022, per valkrets
 
 Körs om vid behov; redan hämtade filer hoppas över om de inte är tomma.
 Kandidaturfilen uppdateras varje timme hos Valmyndigheten och hämtas
@@ -15,6 +16,7 @@ därför alltid på nytt.
 
 import csv
 import io
+import json
 import os
 import sys
 import time
@@ -131,6 +133,59 @@ def fetch_kandidater():
     print("    -> %.1f MB" % (len(blob) / 1048576))
 
 
+# Valmyndighetens resultatapp hämtar sina siffror från förutsägbara adresser.
+# Suffixet är "_S" för slutligt resultat -- inte "_SLUTLIG", som konstanten i
+# appens källkod heter. Det gick bara att fastställa genom att titta på vilka
+# anrop sidan faktiskt gör.
+VAL2022 = "https://resultat.val.se/data"
+
+
+def fetch_val2022():
+    """Slutresultatet i riksdagsvalet 2022: personröster per kandidat.
+
+    Valgeografin ger de 29 valkretskoderna, och en fil per valkrets bär
+    personrösterna. Kandidatfilen för 2022 innehåller inga röstetal alls, så
+    det här är enda vägen till hur många kryss som faktiskt behövdes.
+    """
+    dest_dir = os.path.join(RAW, "val2022")
+    os.makedirs(dest_dir, exist_ok=True)
+
+    geo = os.path.join(dest_dir, "valgeografi.json")
+    if have(geo, 100_000):
+        print("  finns: valgeografi.json")
+    else:
+        print("  hämtar: valgeografi")
+        with open(geo, "wb") as f:
+            f.write(get("%s/valgeografi/valgeografi_val2022.json" % VAL2022))
+
+    with open(geo, encoding="utf-8") as f:
+        träd = json.load(f)["valgeografi"]
+    riksdag = [v for v in träd if v["kod"] == "RD"]
+    if not riksdag:
+        raise RuntimeError("valgeografin saknar valtypen RD")
+    koder = [(v["kod"], v["namn"]) for v in riksdag[0]["valgeografi"]]
+    if len(koder) != 29:
+        raise RuntimeError("väntade 29 valkretsar, fick %d" % len(koder))
+
+    saknas = [(k, n) for k, n in koder
+              if not have(os.path.join(dest_dir, "RD_%s.json" % k), 10_000)]
+    if not saknas:
+        print("  finns: 29 valkretsresultat")
+        return
+
+    def en(kod_namn):
+        kod, namn = kod_namn
+        blob = get("%s/resultat/val2022/RD_%s_S.json" % (VAL2022, kod))
+        with open(os.path.join(dest_dir, "RD_%s.json" % kod), "wb") as f:
+            f.write(blob)
+        return namn, len(blob)
+
+    print("  hämtar: %d valkretsresultat" % len(saknas))
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for namn, n in pool.map(en, saknas):
+            print("    %-30s %d kB" % (namn, n // 1024))
+
+
 def betankanden():
     """Alla (rm, beteckning) som förekommer i voteringsdatan."""
     seen = set()
@@ -209,6 +264,8 @@ def main():
     fetch_idkarta()
     print("kandidater (val 2026):")
     fetch_kandidater()
+    print("resultat (val 2022):")
+    fetch_val2022()
     print("utskottsforslag:")
     fetch_utskottsforslag()
     print("\nklart. rådata i %s" % RAW)

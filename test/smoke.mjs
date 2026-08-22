@@ -87,6 +87,15 @@ for (const heading of ["Valsedeln 2026", "Röstning i kammaren", "Röstade mot s
   if (!member.includes(heading)) fail("ledamot", `saknar avsnittet ”${heading}”`);
 }
 if (!/median/i.test(member)) fail("ledamot", "röstandel visas utan median intill");
+// the 2022 card is only there for members we could match; when it is, the
+// threshold has to be stated in votes and not just as a rule
+if (member.includes("Personvalet 2022")) {
+  const card = member.match(/Personvalet 2022[\s\S]{0,400}/)[0];
+  if (!/kryss/.test(card)) fail("ledamot", "personvalskortet saknar kryssen");
+  if (!/[Ss]pärren (var|där var) [\d\s]+kryss/.test(card)) {
+    fail("ledamot", `spärren anges inte i antal kryss: ${card.slice(0, 120)}`);
+  }
+}
 
 // 3. expanding a votering must fetch and render the detail
 current = "ledamot/votering";
@@ -144,6 +153,13 @@ await page.locator('.valkretsval a[href^="#/valsedel/"]').first().click();
 await page.waitForSelector(".valsedel-parti");
 const ballot = await visit("valsedel/valkrets", await page.evaluate(() => location.hash));
 if (!/personkryss/.test(ballot)) fail("valsedel/valkrets", "saknar noten om spärren");
+// the 2022 threshold has to be stated in votes for each riksdag party
+const thresholds = await page.locator("p.sparr").count();
+if (thresholds < 8) fail("valsedel/valkrets", `bara ${thresholds} spärrnoter, väntade 8`);
+const sparrText = await page.locator("p.sparr").first().innerText();
+if (!/\d[\d\s]*personkryss/.test(sparrText)) {
+  fail("valsedel/valkrets", `spärren anges inte i antal kryss: ${sparrText.slice(0, 60)}`);
+}
 const parties = await page.locator("h2.valsedel-parti").count();
 if (parties < 8) fail("valsedel/valkrets", `bara ${parties} partier i valkretsen`);
 
@@ -168,6 +184,7 @@ for (const heading of [
   "Röstandel, inte närvaro",
   "Det politiska rummet",
   "Valsedlarna",
+  "Personkryssen 2022",
   "Byte av partibeteckning",
   "Källor",
 ]) {
