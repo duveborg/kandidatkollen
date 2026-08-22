@@ -88,6 +88,7 @@ function BallotList({ list, byName, siblings, crosses }) {
   ].join(" · ");
 
   const ranked = list.kandidater.some(([, position]) => position);
+  const mix = list.sammansattning;
 
   return (
     <li className="fallbar">
@@ -106,6 +107,14 @@ function BallotList({ list, byName, siblings, crosses }) {
             <p className="kalla">
               {"Listan är orankad — Valmyndighetens fil anger ingen ordning för " +
                 "kandidaterna, så de står i bokstavsordning här."}
+            </p>
+          ) : null}
+          {mix?.median_alder ? (
+            <p className="kalla">
+              {`Medianåldern på listan är ${mix.median_alder} år på valdagen, den yngsta ` +
+                `${mix.yngst} och den äldsta ${mix.aldst}. ` +
+                `${formatNumber(mix.kvinnor)} av ${formatNumber(list.kandidater.length)} ` +
+                "kandidater är kvinnor."}
             </p>
           ) : null}
           {list.ogiltiga.length ? (

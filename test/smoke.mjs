@@ -87,6 +87,11 @@ for (const heading of ["Valsedeln 2026", "Röstning i kammaren", "Röstade mot s
   if (!member.includes(heading)) fail("ledamot", `saknar avsnittet ”${heading}”`);
 }
 if (!/median/i.test(member)) fail("ledamot", "röstandel visas utan median intill");
+// close votes: always a share with the median in the same sentence, never a rank
+const close = await page.locator("p.knappa").innerText();
+if (!/Medianledamoten röstade i \d+ % av sina/.test(close)) {
+  fail("ledamot", `knappa voteringar utan medianjämförelse: ${close.slice(0, 90)}`);
+}
 // the 2022 card is only there for members we could match; when it is, the
 // threshold has to be stated in votes and not just as a rule
 if (member.includes("Personvalet 2022")) {
@@ -166,6 +171,10 @@ if (parties < 8) fail("valsedel/valkrets", `bara ${parties} partier i valkretsen
 current = "valsedel/lista";
 await page.locator(".rader details summary").first().click();
 await page.waitForSelector(".valsedel-lista li");
+const composition = await page.locator(".rader details[open] .detalj p.kalla").allInnerTexts();
+if (!composition.some((t) => /Medianåldern på listan/.test(t))) {
+  fail("valsedel/lista", "listan saknar sammansättningen");
+}
 const names = await page.locator(".valsedel-lista li").count();
 if (names < 5) fail("valsedel/lista", `listan renderade ${names} kandidater`);
 const first = await page.locator(".valsedel-lista li").first().innerText();

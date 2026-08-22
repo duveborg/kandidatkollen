@@ -45,6 +45,20 @@ export function About() {
             "siffra, och ingen topplista över lägst röstandel."}
         </p>
 
+        <h2>Knappa voteringar</h2>
+        <p>
+          {`${formatNumber(stats.antal_knappa)} voteringar under perioden avgjordes med högst ` +
+            "tio rösters marginal. Profilsidan visar hur många av dem ledamoten satt med i " +
+            "och röstade i, som andel och med riksdagens median i samma mening."}
+        </p>
+        <p>
+          {"Talet redovisas som andel och aldrig som lista. De knappa voteringarna ligger " +
+            "ojämnt över mandatperioden, så en ledamot som tillträtt sent kan ha ett fyrtiotal " +
+            "möjliga mot någon annans alla — då blir antal missade ett mått på när hen " +
+            "tillträdde, inte på närvaro. Och kvittningen slår igenom här precis som i " +
+            "röstandelen: en lista över missade avgöranden skulle bli en partiledarlista."}
+        </p>
+
         <h2>Avvikelse från partilinjen</h2>
         <p>
           {"Partiets linje i en votering är den vanligaste ståndpunkten bland partiets " +
@@ -188,6 +202,15 @@ export function About() {
             "riksdagens egna namn krävs dessutom att bindestreck, punkter och utelämnade " +
             "mellannamn hanteras. Två ledamöter går ändå inte att hitta i 2022-datan och " +
             "saknar därför siffra."}
+        </p>
+
+        <h2>Listornas sammansättning</h2>
+        <p>
+          {"Medianålder, yngsta och äldsta kandidat samt antalet kvinnor räknas på " +
+            "Valmyndighetens egna uppgifter för varje fastställd valsedel. Åldern är åldern " +
+            "på valdagen, som är den form källan anger. Könsuppgiften har bara två värden i " +
+            "filen och redovisas som antalet kvinnor av antalet kandidater — sajten lägger " +
+            "inget annat i den."}
         </p>
 
         <h2>Byte av partibeteckning</h2>

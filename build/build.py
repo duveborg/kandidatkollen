@@ -292,11 +292,13 @@ def load_val2022():
                 "roster": roster,
                 "sparr": int(math.ceil(roster * PERSONVAL_SPARR)),
                 # Spärren har bara verkan för partier som är med i
-                # mandatfördelningen. `partiMandat` räcker inte som grind: den
-                # listar bara fasta mandat i valkretsen, så ett parti som tog
-                # platsen på ett utjämningsmandat saknas där. Filens eget
-                # deltaMandatfordelning träffar exakt: 166 mot 166 kvalificerade
-                # i samtliga 29 valkretsar.
+                # mandatfördelningen -- alltså de som klarat fyraprocentsspärren
+                # nationellt. `partiMandat` är fel grind: den räknar mandat i
+                # just den här valkretsen, och Valmyndigheten redovisar
+                # kvalificerade kandidater även i valkretsar där partiet inte
+                # tog något mandat (43 av 166 fall). Filens eget
+                # deltaMandatfordelning träffar exakt: 166 mot 166 i samtliga
+                # 29 valkretsar.
                 "i_fordelning": bool(p.get("deltaMandatfordelning")),
                 "kryss": dict(kryss),
                 "personvalda": sorted(n for n, v in kryss.items()
@@ -520,6 +522,8 @@ def load_kandidater():
                     "beteckning": beteckning,
                     "valkretsar": set(),
                     "kandidater": {},
+                    "alder": {},
+                    "kon": {},
                     "ogiltiga": set(),
                 }
             sed["valkretsar"].add(d["VALKRETSNAMN"])
@@ -533,6 +537,8 @@ def load_kandidater():
                     sed["ogiltiga"].add(ordning)
                 continue
             sed["kandidater"][namn] = ordning
+            sed["alder"][namn] = as_int(d["ÅLDER_PÅ_VALDAGEN"])
+            sed["kon"][namn] = d["KÖN"].strip()
 
             key = (namn, parti_full, lista)
             a = acc.get(key)
@@ -565,6 +571,19 @@ def load_kandidater():
 
 
 # ---------------------------------------------------------------- beräkning
+
+def knappa_ids(votes, marginal=10):
+    """Voteringar som avgjordes med högst `marginal` rösters skillnad.
+
+    Behövs både för ledamotsposterna och för statistiken, och måste därför
+    räknas fram före båda. Nyckeln behålls i voteringsdatans egen skiftläge.
+    """
+    tal = collections.defaultdict(collections.Counter)
+    for d in votes:
+        tal[d["votering_id"]][d["rost"]] += 1
+    return {v for v, c in tal.items()
+            if c["Ja"] + c["Nej"] > 0 and abs(c["Ja"] - c["Nej"]) <= marginal}
+
 
 def partilinjer(votes):
     """votering_id -> {parti: linje}. Kräver >=3 röstande i partiet.
@@ -682,7 +701,7 @@ def koppla_personval(rec, spann, val2022):
 
 
 def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet,
-                    val2022):
+                    val2022, knappa):
     """En post per ledamot som förekommer i mandatperiodens rösträkningar.
 
     Nämnaren är antalet voteringar ledamoten står med i, eftersom riksdagen
@@ -700,6 +719,7 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet,
                 "_rost_rm": collections.defaultdict(collections.Counter),
                 "_avvikelser": [],
                 "_deltog": 0, "_mojliga": 0, "_med_linje": 0,
+                "_knappa": 0, "_knappa_deltog": 0,
                 "_partitid": {},
             }
         rec["valkrets"] = d["valkrets"] or rec["valkrets"]
@@ -721,8 +741,14 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet,
         rec["_rost"][d["rost"]] += 1
         rec["_rost_rm"][d["rm"]][d["rost"]] += 1
 
+        knapp = d["votering_id"] in knappa
+        if knapp:
+            rec["_knappa"] += 1
+
         if d["rost"] in ("Ja", "Nej", "Avstår"):
             rec["_deltog"] += 1
+            if knapp:
+                rec["_knappa_deltog"] += 1
             linje = linjer.get(d["votering_id"], {}).get(d["parti"])
             # Nämnaren för avvikelseandelen: bara röster där ledamotens parti
             # faktiskt hade en linje att avvika från.
@@ -808,6 +834,11 @@ def build_ledamoter(votes, linjer, amnen, personinfo, kandidater, aktivitet,
                 "avstar": r["_rost"]["Avstår"],
                 "rostade_inte": r["_rost"]["Frånvarande"],
                 "narvaro": round(deltog / mojliga, 4) if mojliga else None,
+                # Knappa voteringar för sig. Ett eget mått, aldrig en
+                # rangordning: kvittningen slår igenom här precis som i
+                # röstandelen, och toppen blir en partiledarlista.
+                "knappa": {"mojliga": r["_knappa"],
+                           "deltog": r["_knappa_deltog"]},
                 "per_rm": {rm: dict(c) for rm, c in r["_rost_rm"].items()},
             },
             "avvikelser": {
@@ -1140,6 +1171,9 @@ def build_valsedlar(sedlar, val2022):
         # rankade -- annars hamnar de först och ser ut som listans topp.
         kandidater = sorted(sed["kandidater"].items(),
                             key=lambda kv: (kv[1] == 0, kv[1], kv[0]))
+        aldrar = sorted(v for v in
+                        (sed["alder"].get(n) for n, _ in kandidater) if v)
+        kvinnor = sum(1 for n, _ in kandidater if sed["kon"].get(n) == "K")
         idx = len(listor)
         listor.append({
             "parti": sed["parti"],
@@ -1150,6 +1184,14 @@ def build_valsedlar(sedlar, val2022):
             "antal_valkretsar": len(sed["valkretsar"]),
             "kandidater": [[namn, ordning] for namn, ordning in kandidater],
             "ogiltiga": sorted(sed["ogiltiga"]),
+            # Listans sammansättning. Åldern är åldern på valdagen, som står
+            # i källan -- inte födelseår.
+            "sammansattning": {
+                "kvinnor": kvinnor,
+                "median_alder": (aldrar[len(aldrar) // 2] if aldrar else None),
+                "yngst": aldrar[0] if aldrar else None,
+                "aldst": aldrar[-1] if aldrar else None,
+            },
         })
         for vk in sed["valkretsar"]:
             per_valkrets[vk].append(idx)
@@ -1199,7 +1241,7 @@ def build_valsedlar(sedlar, val2022):
     }
 
 
-def build_stats(votes, linjer, amnen, ledamoter, val2022):
+def build_stats(votes, linjer, amnen, ledamoter, val2022, knappa_set):
     """Aggregat för startsidan och blockkartan."""
     matris = enighet(linjer)
 
@@ -1223,7 +1265,7 @@ def build_stats(votes, linjer, amnen, ledamoter, val2022):
     knappa = []
     for vid, c in tot.items():
         ja, nej = c["Ja"], c["Nej"]
-        if ja + nej > 0 and abs(ja - nej) <= 10:
+        if vid in knappa_set:
             dt, rm, bet, punkt = datum[vid]
             a = amnen.get(vid.lower(), {})
             knappa.append({
@@ -1268,6 +1310,13 @@ def build_stats(votes, linjer, amnen, ledamoter, val2022):
         return round(xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2, 4)
 
     narvaro_median = median(l["rostning"]["narvaro"] for l in heltid)
+    # Medianen intill den enskildes tal, av samma skäl som för röstandelen.
+    # Som andel, inte antal: de knappa voteringarna ligger ojämnt över
+    # perioden, så en ledamot som tillträtt sent kan ha 41 möjliga mot någon
+    # annans 157. Att jämföra antal skulle straffa henom för det.
+    knappa_median = median(l["rostning"]["knappa"]["deltog"]
+                           / l["rostning"]["knappa"]["mojliga"]
+                           for l in heltid if l["rostning"]["knappa"]["mojliga"])
 
     def akt(lst, falt):
         return median(l["aktivitet"][falt] for l in lst if l.get("aktivitet"))
@@ -1321,6 +1370,7 @@ def build_stats(votes, linjer, amnen, ledamoter, val2022):
         "enighet_per_rm": per_rm,
         "knappa_voteringar": knappa[:60],
         "antal_knappa": len(knappa),
+        "knappa_median": knappa_median,
         "lamnar_riksdagen": lamnar,
         "partibytare": bytare,
         "personval_2022": personval,
@@ -1344,13 +1394,16 @@ def main():
     print("läser sagt och gjort:")
     aktivitet = load_aktivitet()
 
+    knappa = knappa_ids(votes)
+    print("  %d knappa voteringar (högst 10 rösters marginal)" % len(knappa))
+
     print("beräknar partilinjer:")
     linjer = partilinjer(votes)
     print("  %d voteringar med minst en partilinje" % len(linjer))
 
     print("bygger ledamöter:")
     ledamoter = build_ledamoter(votes, linjer, amnen, personinfo, kandidater,
-                                aktivitet, val2022)
+                                aktivitet, val2022, knappa)
 
     print("bygger sökindex:")
     index = build_index(ledamoter, kandidater)
@@ -1359,7 +1412,7 @@ def main():
     valsedlar = build_valsedlar(sedlar, val2022)
 
     print("bygger statistik:")
-    stats = build_stats(votes, linjer, amnen, ledamoter, val2022)
+    stats = build_stats(votes, linjer, amnen, ledamoter, val2022, knappa)
 
     print("beräknar politiskt rum:")
     rum = build_rum(votes, ledamoter)

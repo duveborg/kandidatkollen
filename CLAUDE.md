@@ -72,7 +72,7 @@ Var och en av dessa har producerat felaktiga siffror utan att fela.
 | Namnformer mot riksdagen | Riksdagens namn skiljer sig i sin tur från Valmyndighetens: bindestreck mot mellanslag ("Jamal El-Haj" / "Jamal El Haj"), punkt efter initial ("Carl B. Hamilton"), utelämnat mellannamn ("Emma Köster" / "Emma Ahlström Köster"), initial i stället för namn ("Linda W Snecker" / "Linda Westerlund Snecker") och till och med annan stavning av förnamnet ("Marcus" / "Markus Wiechel"). `namn_nyckel()` plus `hitta_kandidat()` tar 424 av 426 ledamöter; exakt matchning tog 406. |
 | Personröster i annan valkrets | Spärren prövas **per valkrets**. Åtta ledamöter -- sju av dem SD:s -- har noll kryss i den valkrets de valdes i men kryss i upp till 26 andra, eftersom partiets listor går över hela landet. Slå aldrig samman dem till en rikssiffra: kryss i Västmanland kunde inte ge mandatet i Blekinge. |
 | Noll mot okänt | Kandidater utan personröster står **inte i filen alls** (talen går ner till 1). Ett saknat namn är därför noll kryss *eller* en matchningsmiss. `koppla_personval()` skriver bara ut noll när namnet går att hitta någon annanstans i 2022-datan; annars rapporteras ingenting. Två ledamöter hamnar där. |
-| `partiMandat` | Listar bara **fasta mandat** i valkretsen. Ett parti som tog platsen på ett utjämningsmandat saknas, så `mandat > 0` är fel grind för personvalsspärren -- den gav 121 kvalificerade mot filens 166. Använd `deltaMandatfordelning` på partiraden i stället: 166 mot 166 i samtliga 29 valkretsar. |
+| `partiMandat` mot spärren | `partiMandat` är korrekt -- mandat per parti och valkrets, utjämningsmandat inräknade, summa 349, identiskt med `ledamoterPerParti`. Men det är **fel grind för personvalsspärren**: Valmyndigheten redovisar kvalificerade kandidater även i valkretsar där partiet inte tog något mandat (43 av 166 fall), eftersom spärren gäller alla partier i mandatfördelningen. `mandat > 0` gav 121 mot filens 166. Använd `deltaMandatfordelning` på partiraden: 166 mot 166 i samtliga 29 valkretsar. |
 | Dubbla valsedlar | 33 fall där ett parti har **fler än en fastställd valsedel med samma beteckning** i samma valkrets — SD i alla 29. Innehållet är nästan identiskt men stavning och numrering skiljer ("Helena Ståhl" mot "Helena Stål"). Slå inte samman dem: båda är fastställda. Gränssnittet noterar bara fallet när beteckningen är densamma; en valkretslista plus en nationell lista är två olika sedlar. |
 | Uppdragsperioder | Förra periodens uppdrag slutar **exakt** på dagen den nya börjar. `overlappar()` kräver därför `tom > PERIOD_START`, inte `>=`. |
 | Statsråd | Sittande statsråd förekommer **inte alls** i voteringsdatan. De 14 som gör det är avgångna statsråd som blivit vanliga ledamöter. |
@@ -91,11 +91,16 @@ Sajten kan bli journalistik. Dessa val är avsiktliga, inte förbiseenden.
   Visa alltid medianen intill siffran, och behåll kvittningsnoten som slår in
   automatiskt >5 procentenheter under medianen.
 - **Kvittningsfällan gäller varje frånvarobaserat mått**, inte bara
-  röstandelen. Verifierat på de knappa voteringarna: medianledamoten missade
-  14 av 157, men toppen är Jimmie Åkesson 105, Magdalena Andersson 66 och
-  Nooshi Dadgostar 43. "Missade avgörande voteringar" som lista blir alltså
-  en partiledarlista igen. Som profilsiffra med medianen intill går det bra;
-  som rangordning gör det inte det.
+  röstandelen. Verifierat på de knappa voteringarna: medianledamoten röstade i
+  **89 %** av dem hen satt med i, men Jimmie Åkesson i 33 %, Magdalena
+  Andersson i 58 %. "Missade avgörande voteringar" som lista blir alltså en
+  partiledarlista igen. Som profilsiffra med medianen i samma mening går det
+  bra; som rangordning gör det inte det.
+- **Knappa voteringar redovisas som andel, aldrig som antal missade.** De 157
+  ligger ojämnt över perioden: en heltidsledamot kan ha 18 möjliga mot en
+  annans 157, och 23 av 364 heltidsledamöter ligger >30 under medianen i antal
+  utan att ha låg närvaro — de tillträdde bara senare. Antal missade mäter
+  tillträdesdatum, inte närvaro.
 - **Hitta inte på partiledaretiketter.** `partiuppdrag` saknar rollen
   systematiskt för S, M, SD, V och KD. Visa verifierbara fakta i stället
   (Utrikesnämnden, Krigsdelegationen) och låt läsaren tolka.
@@ -191,6 +196,7 @@ Avviker något har antagligen en av fällorna ovan slagit till.
 | partibytare | 9, samtliga från parti till politiskt obunden |
 | personvalet 2022 | 67 av 349 personvalda, 166 över spärren, 13 684 kandidater med kryss |
 | personval per ledamot | 424 av 426 matchade, varav 59 personvalda (de 8 som fattas är statsråd och talman, som inte finns i voteringsdatan) |
+| knappa voteringar | median 89 % deltagande bland 364 heltidsledamöter |
 
 Ändras siffran för sökindex eller kandidatur 2026 är `flip_namn()` det första
 att titta på: den slår ihop namn som stod baklänges, och en sammanslagning

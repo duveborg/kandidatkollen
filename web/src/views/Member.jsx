@@ -29,6 +29,25 @@ function Portrait({ src }) {
   );
 }
 
+/* The votes that were actually decided by a handful of votes. Stated as
+   prose with the median inside the same sentence, because the number alone is
+   the same trap as the vote share: pairing hits the party leaders hardest, so
+   this is a fact about one member and never a ranking. */
+function CloseVotes({ member, stats }) {
+  const close = member.rostning.knappa;
+  if (!close?.mojliga || !stats.antal_knappa) return null;
+
+  const firstName = member.namn.split(" ")[0];
+  return (
+    <p className="hint knappa">
+      {`Riksdagen avgjorde ${formatNumber(stats.antal_knappa)} voteringar med högst tio ` +
+        `rösters marginal. ${firstName} satt med i ${formatNumber(close.mojliga)} av dem och ` +
+        `röstade i ${formatNumber(close.deltog)}, ${percent(close.deltog / close.mojliga, 0)}. ` +
+        `Medianledamoten röstade i ${percent(stats.knappa_median, 0)} av sina.`}
+    </p>
+  );
+}
+
 /* The bar puts the member's vote share next to the Riksdag median, because
    the number on its own invites being read as truancy. */
 function AgainstMedian({ member, share, medianShare }) {
@@ -209,6 +228,7 @@ export function Member({ id }) {
             medianShare={stats.narvaro_median}
           />
         ) : null}
+        <CloseVotes member={member} stats={stats} />
         {/* The pairing note appears once the share is clearly below the median,
             because that is when it risks being read as truancy. */}
         {voting.narvaro != null && voting.narvaro < stats.narvaro_median - 0.05 ? (

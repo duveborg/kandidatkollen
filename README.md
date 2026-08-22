@@ -84,6 +84,22 @@ partiledare för S, M, SD, V och KD, så sajten hittar inte på etiketten — de
 visar i stället verifierbara fakta som medlemskap i Utrikesnämnden och
 Krigsdelegationen och låter läsaren tolka.
 
+**Knappa voteringar redovisas som andel, inte som antal missade.** 157
+voteringar under perioden avgjordes med högst tio rösters marginal, och
+profilsidan visar hur många av dem ledamoten satt med i och röstade i.
+De ligger ojämnt över mandatperioden, så en ledamot som tillträtt sent kan ha
+ett fyrtiotal möjliga mot någon annans alla — 23 av de 364 heltidsledamöterna
+ligger långt under medianen i antal utan att ha låg närvaro. Antal missade
+skulle mäta tillträdesdatum, inte närvaro. Medianen bland heltidsledamöterna
+är 89 procents deltagande, och den står i samma mening som ledamotens eget tal.
+Ingen lista rangordnar på måttet: kvittningen slår igenom här precis som i
+röstandelen.
+
+**Listornas sammansättning** — medianålder, yngsta och äldsta kandidat samt
+antalet kvinnor — räknas på Valmyndighetens uppgifter per fastställd valsedel.
+Åldern är åldern på valdagen, som är den form källan anger, och könsuppgiften
+har bara två värden i filen.
+
 **Partilinjen är partiets vanligaste ståndpunkt** i en votering, med minst tre
 röstande. En avvikelse kräver att ledamoten själv röstade; en utebliven röst är
 inte en avvikelse. Politiskt obundna ledamöter har ingen partilinje och får
@@ -182,10 +198,12 @@ Uträkningen reproducerar Valmyndighetens egen lista över kvalificerade
 kandidater exakt, i samtliga 29 valkretsar. I valet 2022 klarade 166 kandidater
 spärren och 67 av riksdagens 349 ledamöter valdes in på personkryss.
 
-Spärren har bara verkan för partier som är med i mandatfördelningen. Grinden
-för det är `deltaMandatfordelning` på partiraden, inte antalet mandat i
-valkretsen: ett parti som tog platsen på ett utjämningsmandat saknas i
-mandatlistan, och den grinden gav 121 kvalificerade i stället för 166.
+Spärren har bara verkan för partier som är med i mandatfördelningen, alltså de
+åtta som klarade fyraprocentsspärren nationellt. Grinden för det är
+`deltaMandatfordelning` på partiraden, inte antalet mandat i valkretsen:
+Valmyndigheten redovisar kvalificerade kandidater även i valkretsar där partiet
+inte tog något mandat, 43 av de 166 fallen, och den grinden gav därför 121
+kvalificerade i stället för 166.
 
 Fyra saker begränsar tolkningen. Talen gäller 2022 och är ingen prognos.
 Spärren prövas valkrets för valkrets, så kryss någon annanstans kunde inte ge
